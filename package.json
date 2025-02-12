@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "lint": "eslint src/",
+    "lint:fix": "eslint --fix .",
     "start": "node .",
     "dev": "node ."
   },
@@ -25,12 +26,15 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.20.0",
     "@types/node": "^22.13.1",
     "@typescript-eslint/eslint-plugin": "^8.23.0",
     "@typescript-eslint/parser": "^8.23.0",
     "eslint": "^9.20.0",
     "eslint-plugin-sonarjs": "^3.0.1",
+    "globals": "^15.14.0",
     "node-env-run": "^4.0.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.23.0"
   }
 }
