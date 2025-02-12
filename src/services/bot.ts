@@ -1,4 +1,0 @@
-// Constants
-const MAX_IMAGE_SIZE = 1000000; // 1MB
-const MAX_POST_LENGTH = 300;
-const DUPLICATE_CHECK_LIMIT = 20;
