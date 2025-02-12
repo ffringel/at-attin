@@ -1,0 +1,23 @@
+name: "Ravens"
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm ci
+      - run: npm run build
+      - name: Send post
+        run: npm start
+        env:
+          BSKY_HANDLE: "ravensbot.bsky.social"
+          BSKY_PASSWORD: ${{ secrets.RAVENS_BSKY_PASSWORD }}
+          MASTODON_HANDLE: "@ravens@sportsbots.xyz"
+          MASTODON_ACCOUNT_ID: "109700148957607619"
+          ALTERNATE_CARD_IMAGE: "https://pbs.twimg.com/profile_images/1855987971276615680/tXSqzfSo_400x400.jpg"
