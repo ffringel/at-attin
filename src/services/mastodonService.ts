@@ -96,36 +96,44 @@ function processImages(attachments: MediaAttachment[]): Image[] {
 function processVideo(attachments: MediaAttachment[]): Video[] {
     if (!attachments.length) return []
     
-    const media = attachments[0];   // Only a single video is present
+    const [media] = attachments;   // Only a single video is present
     const meta = media.meta.original as Mastodon.JSON.VideoAttachmentMeta
-    const duration = meta?.duration || 0;
+    const duration = meta.duration || 0;
     const segmentCount = Math.ceil(duration / VIDEO_CONFIG.SEGMENT_DURATION);
 
     return Array.from({ length: segmentCount }, (_, i) => {
-        const segmentUrl = `${media.url}#t=${i * VIDEO_CONFIG.SEGMENT_DURATION}`;
-        const segmentDuration = i === segmentCount - 1 
-          ? duration % VIDEO_CONFIG.SEGMENT_DURATION || VIDEO_CONFIG.SEGMENT_DURATION
-          : VIDEO_CONFIG.SEGMENT_DURATION;
+        const start = i * VIDEO_CONFIG.SEGMENT_DURATION;
+        const segmentDuration = Math.min(VIDEO_CONFIG.SEGMENT_DURATION, duration - start);
+        const end = start + segmentDuration;
     
         return {
-            url: segmentUrl,
+            url: `${media.url}#t=${start},${end}`,
             metadata: {
-                width: meta.width || 0,
-                height: meta.height || 0,
+                width: meta.width,
+                height: meta.height,
                 duration: segmentDuration,
-                preview_url: media.preview_url
+                preview_url: addTimeParameter(media.preview_url, start)
             }
         };
     });
 }
 
+function addTimeParameter(originalUrl: string, timeSeconds: number): string {
+    const url = new URL(originalUrl);
+    url.searchParams.set('t', `${Math.floor(timeSeconds)}`);
+      
+    return url.toString();
+  }
+
 /**
  * Processes card data
  */
-function processCard(card?: CardData): Card {  
-    const imageUrl = (card as Mastodon.JSON.PhotoCard)?.image || (card as Mastodon.JSON.VideoCard)?.image || undefined;
+function processCard(card?: CardData): Card | undefined {
+    if (!card) return
+
+    const imageUrl = (card as Mastodon.JSON.PhotoCard)?.image || (card as Mastodon.JSON.VideoCard)?.image;
     return {
-        url: card?.url,
+        uri: card?.url,
         title: card?.title,
         description: card?.description,
         image: imageUrl,

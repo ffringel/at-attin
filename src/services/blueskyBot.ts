@@ -141,13 +141,13 @@ export default class BlueskyBot {
                     images
                 };
             } else if (post.card) {
-                const thumb = await this.uploadMedia(post.card.image || '', post.card.title || '');
+                const thumb = await this.uploadMedia(post.card.image!!, post.card.title!!);
                 embed = {
                     $type: 'app.bsky.embed.external',
                     external: {
-                      uri: post.card.url || '',
-                      title: post.card.title || '',
-                      description: post.card.description || '',
+                      uri: post.card.uri,
+                      title: post.card.title,
+                      description: post.card.description,
                       thumb: thumb.blob
                     }
                 };
@@ -176,7 +176,7 @@ export default class BlueskyBot {
                     this.updateReplyRefs(response);
                     console.log('Posted successfully:', postRecord.text);
                 } else {
-                  console.log('Error validating post:', res.error.message)
+                  console.log('Error validating post:', postRecord)
                 }
             }
         } catch (error) {
@@ -186,7 +186,7 @@ export default class BlueskyBot {
     }
 
     private async handleShortPost(post: PostContent): Promise<void> {
-        if (!post.videos) {
+        if (!post.videos?.length) {
             await this.postContent({
                 created_at: post.created_at,
                 content: post.content,
@@ -208,7 +208,7 @@ export default class BlueskyBot {
 
     private async handleLongPost(post: PostContent) {
         const chunks = this.splitLongPost(post.content);
-        if (!post.videos) {
+        if (!post.videos?.length) {
             for (const [i, chunk] of chunks.entries()) {
                 await this.postContent({ ...post, content: chunk }, i > 0);
             }

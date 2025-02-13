@@ -32,7 +32,7 @@ export interface VideoMetadata {
 };
 
 export interface Card {
-    url?: string;
+    uri?: string;
     title?: string;
     description?: string;
     image?: string;
