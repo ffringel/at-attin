@@ -20,4 +20,4 @@ jobs:
           BSKY_PASSWORD: ${{ secrets.LFC_BSKY_PASSWORD }}
           MASTODON_HANDLE: "@lfc@sportsbots.xyz"
           MASTODON_ACCOUNT_ID: "109787827684130095"
-          ALTERNATE_CARD_IMAGE: "https://pbs.twimg.com/profile_images/1856268307868844032/lbdn4-vK_400x400.jpg"
+          ALT_CARD_IMG: "https://pbs.twimg.com/profile_images/1856268307868844032/lbdn4-vK_400x400.jpg"
