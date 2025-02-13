@@ -198,7 +198,7 @@ export default class BlueskyBot {
 
         for (const [i, video] of post.videos.entries()) {
             await this.postContent({
-                created_at: post.created_at,
+                ...post,
                 content: i === 0 ? post.content : '🎥 continued...',
                 video: video,
                 card: i === 0 ? post.card : undefined
