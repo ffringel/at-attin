@@ -30,15 +30,18 @@ export default async function getPosts(): Promise<PostContent[]> {
  * Processes array of Mastodon posts
  */
 function processPosts(response: Status[]): PostContent[] {
-    return response.filter((post) => !post.reblog).map(post => {
-        return {
-            created_at: post.created_at,
-            content: sanitizeContent(post.content),
-            images: processImages(post.media_attachments),
-            videos: processVideo(post.media_attachments),
-            card: processCard(post.card || undefined)
-        }
+    response.filter((post) => !post.reblog).map(post => {
+        console.log(sanitizeContent(post.content))
+        // return {
+        //     created_at: post.created_at,
+        //     content: sanitizeContent(post.content),
+        //     images: processImages(post.media_attachments),
+        //     videos: processVideo(post.media_attachments),
+        //     card: processCard(post.card || undefined)
+        // }
     });
+
+    return []
 }
 
 /**

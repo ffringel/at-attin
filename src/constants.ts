@@ -18,8 +18,8 @@ export const REGEX = {
     AMP: /&amp;/g,
     NBSP: /&nbsp;/g,
     TWITTER: /@twitter.com/g,
-    ACCOUNT: new RegExp(sourceAccount, "g"),
-    SERVER: new RegExp("@" + sourceAccountId.split("@")[2], "g"),
+    ACCOUNT: new RegExp(sourceAccount, 'g'),
+    SERVER: new RegExp('@' + sourceAccount.split('@')[2], 'g'),
     HTML_TAGS: /<[^>]+>/g,
     INVALID_LINKS: /\S*(\.com|\.ca|\.org|\.net)\S*(…|\.\.\.)/g,
 } as const;
