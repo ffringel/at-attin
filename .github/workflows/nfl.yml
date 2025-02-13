@@ -1,0 +1,23 @@
+name: "NFL"
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm ci
+      - run: npm run build
+      - name: Send post
+        run: npm start
+        env:
+          BSKY_HANDLE: "nflbot.bsky.social"
+          BSKY_PASSWORD: ${{ secrets.NFL_BSKY_PASSWORD }}
+          MASTODON_HANDLE: "@nfl@sportsbots.xyz"
+          MASTODON_ACCOUNT_ID: "109616443942149309"
+          ALT_CARD_IMG: "https://pbs.twimg.com/profile_images/1619895559334273028/PHKS_mjX_400x400.jpg"
