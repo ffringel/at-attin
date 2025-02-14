@@ -1,4 +1,4 @@
-import { sourceAccount, sourceAccountId } from "./config/config.js";
+import { sourceAccount } from "./config/config.js";
 
 export const MAX_POSTS = 20;
 export const MAX_IMAGE_SIZE = 1000000; // 1MB

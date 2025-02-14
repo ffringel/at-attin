@@ -1,5 +1,5 @@
 import axios from "axios";
-import { AppBskyFeedPost, RichText, AtpAgent } from "@atproto/api";
+import { AppBskyFeedPost, RichText, AtpAgent, AppBskyFeedGetAuthorFeed } from "@atproto/api";
 import { altCardImage, bskyAccount, bskyApi } from "../config/config.js";
 import { CHUNK_BUFFER, MAX_IMAGE_SIZE, MAX_POST_LENGTH, MAX_POSTS, MAX_VIDEO_SIZE } from "../constants.js";
 import { BotOptions, MediaUpload, PostContent } from "../types.js";
@@ -30,14 +30,16 @@ export default class BlueskyBot {
         });
     }
 
-    private async checkDuplicatePost(text: string): Promise<boolean> {
-        const feed = await this.agent.app.bsky.feed.getAuthorFeed({
+    private async recentPosts(): Promise<AppBskyFeedGetAuthorFeed.Response> {
+        return this.agent.app.bsky.feed.getAuthorFeed({
             actor: this.agent.session?.did || '',
             limit: MAX_POSTS,
         });
+    }
 
+    private async isDuplicatePost(feed: AppBskyFeedGetAuthorFeed.Response, post: PostContent): Promise<boolean> {
         return feed.data.feed.some((item) =>
-            (item.post.record as AppBskyFeedPost.Record).text === text
+            (item.post.record as AppBskyFeedPost.Record).text.trim() === post.content.trim()
         );
     }
 
@@ -98,14 +100,8 @@ export default class BlueskyBot {
     }
 
     async postContent(post: PostContent, isReply = false): Promise<void> {
-        const postText = post.content.trim()
-        if (await this.checkDuplicatePost(postText)) {
-            console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
-            return;
-        }
-
         try {
-            const richText = new RichText({ text: postText });
+            const richText = new RichText({ text: post.content.trim() });
             await richText.detectFacets(this.agent);
 
             // Initialize embed structure
@@ -199,7 +195,7 @@ export default class BlueskyBot {
         for (const [i, video] of post.videos.entries()) {
             await this.postContent({
                 ...post,
-                content: i === 0 ? post.content : '🎥 continued...',
+                content: i === 0 ? post.content : ' ',
                 video: video,
                 card: i === 0 ? post.card : undefined
             }, i > 0);
@@ -217,7 +213,7 @@ export default class BlueskyBot {
         
         const postCount = Math.max(chunks.length, post.videos.length);
         for (let i = 0; i < postCount; i++) {
-            const content = i < chunks.length ? chunks[i] : '🎥 continued...';
+            const content = i < chunks.length ? chunks[i] : ' ';
             const video = post.videos[i];
             await this.postContent({
                 ...post,
@@ -233,14 +229,19 @@ export default class BlueskyBot {
 
         try {
             await bot.login()
-            const posts = await getPosts();
+            const recentBskyPosts = await bot.recentPosts()
+            const mastodonPosts = await getPosts();
 
-            for (const post of posts) {
-                if (post.content.length <= MAX_POST_LENGTH) {
-                    await bot.handleShortPost(post);
-                } else {
-                    await bot.handleLongPost(post);
+            for (const post of mastodonPosts) {
+                
+                if (await bot.isDuplicatePost(recentBskyPosts, post)) {
+                    console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
+                    continue
                 }
+                
+                post.content.length <= MAX_POST_LENGTH 
+                    ? await bot.handleShortPost(post) 
+                    : await bot.handleLongPost(post);
             }
         } catch (error) {
             console.error('Error in bot execution:', (error as Error).message);
