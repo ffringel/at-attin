@@ -11,6 +11,7 @@ export default class BlueskyBot {
     private parentUri = "";
     private parentCid = "";
     private dryRun = false;
+    private feed?: AppBskyFeedGetAuthorFeed.Response;
 
     static defaultOptions: BotOptions = {
         service: bskyApi,
@@ -30,16 +31,16 @@ export default class BlueskyBot {
         });
     }
 
-    private async recentPosts(): Promise<AppBskyFeedGetAuthorFeed.Response> {
-        return this.agent.app.bsky.feed.getAuthorFeed({
+    private async recentFeed() {
+        this.feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: this.agent.session?.did || '',
             limit: MAX_POSTS,
         });
     }
 
-    private async isDuplicatePost(feed: AppBskyFeedGetAuthorFeed.Response, post: PostContent): Promise<boolean> {
-        return feed.data.feed.some((item) =>
-            (item.post.record as AppBskyFeedPost.Record).text.trim() === post.content.trim()
+    private async isDuplicatePost(post: PostContent, isReply: boolean): Promise<boolean> {
+        return this.feed!.data.feed.some((item) =>
+            !isReply && (item.post.record as AppBskyFeedPost.Record).text.trim() === post.content.trim()
         );
     }
 
@@ -100,6 +101,11 @@ export default class BlueskyBot {
     }
 
     async postContent(post: PostContent, isReply = false): Promise<void> {
+        if (await this.isDuplicatePost(post, isReply)) {
+            console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
+            return;
+        }
+
         try {
             const richText = new RichText({ text: post.content.trim() });
             await richText.detectFacets(this.agent);
@@ -161,7 +167,7 @@ export default class BlueskyBot {
             };
 
             if (this.dryRun) {
-                console.log("Dry run - would post:", JSON.stringify(postRecord, null, 2));
+                console.log('Dry run - would post:', JSON.stringify(postRecord, null, 2));
                 return;
             }
 
@@ -229,16 +235,10 @@ export default class BlueskyBot {
 
         try {
             await bot.login()
-            const recentBskyPosts = await bot.recentPosts()
-            const mastodonPosts = await getPosts();
+            await bot.recentFeed()
+            const posts = await getPosts();
 
-            for (const post of mastodonPosts) {
-                
-                if (await bot.isDuplicatePost(recentBskyPosts, post)) {
-                    console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
-                    continue
-                }
-                
+            for (const post of posts) {
                 post.content.length <= MAX_POST_LENGTH 
                     ? await bot.handleShortPost(post) 
                     : await bot.handleLongPost(post);
