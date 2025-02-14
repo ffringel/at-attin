@@ -16,10 +16,8 @@ const mastodon = new Mastodon.API({access_token: "", api_url: mastodonApi})
  */
 export default async function getPosts(): Promise<PostContent[]> {
     try {
-        const response = await mastodon.getStatuses(sourceAccountId, {limit: MAX_POSTS});
-        const posts = processPosts(response.json)
-        
-        return posts
+        const response = await mastodon.getStatuses(sourceAccountId, {limit: MAX_POSTS});   
+        return processPosts(response.json)
     } catch (error) {
         console.error('Failed to process Mastodon posts:', error)
         throw error;
@@ -117,13 +115,6 @@ function processVideo(attachments: MediaAttachment[]): Video[] {
         };
     });
 }
-
-function addTimeParameter(originalUrl: string, timeSeconds: number): string {
-    const url = new URL(originalUrl);
-    url.searchParams.set('t', `${Math.floor(timeSeconds)}`);
-      
-    return url.toString();
-  }
 
 /**
  * Processes card data

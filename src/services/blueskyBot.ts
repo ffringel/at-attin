@@ -39,38 +39,55 @@ export default class BlueskyBot {
         });
     }
 
-    private async isDuplicatePost(post: PostContent): Promise<boolean> {
+    private async isDuplicatePost(post: PostContent, isReply: boolean): Promise<boolean> {
         const text = post.content.trim();
-        
-        // Helper function to check a post and its parent chain
-        const checkPostAndAncestors = (postView: any): boolean => {
-            // Check current post
-            const currentText = (postView.post.record as AppBskyFeedPost.Record).text.trim();
-            if (currentText === text) return true;
+        const currentRootUri = this.rootUri;
+        const currentParentUri = this.parentUri;
     
-            // Check parent chain if exists
-            if (postView.reply) {
-                // Check parent post
-                const parentText = (postView.reply.parent.record as AppBskyFeedPost.Record).text.trim();
-                if (parentText === text) return true;
+        // Check parent/root texts in the feed
+        if (isReply) {
+            // Find parent post in feed with proper typing
+            const parentPost = this.feed!.data.feed.find(item => 
+                item.post.uri === currentParentUri
+            );
+            const parentRecord = parentPost?.post.record as AppBskyFeedPost.Record | undefined;
+            const parentText = parentRecord?.text?.trim() || '';
+            if (parentText === text) return true;
     
-                // Check root post
-                const rootText = (postView.reply.root.record as AppBskyFeedPost.Record).text.trim();
+            // Find root post in feed (if different from parent)
+            if (currentRootUri && currentRootUri !== currentParentUri) {
+                const rootPost = this.feed!.data.feed.find(item => 
+                    item.post.uri === currentRootUri
+                );
+                const rootRecord = rootPost?.post.record as AppBskyFeedPost.Record | undefined;
+                const rootText = rootRecord?.text?.trim() || '';
                 if (rootText === text) return true;
             }
+        }
     
-            return false;
-        };
+        return this.feed!.data.feed.some(item => {
+            const record = item.post.record as AppBskyFeedPost.Record;
+          
+            // Check text content
+            const itemText = record?.text?.trim() || '';
+            if (itemText !== text) return false;
     
-        // Check all posts and their parent/root relationships
-        return this.feed!.data.feed.some(item => checkPostAndAncestors(item));
+            // Thread validation
+            if (isReply) {
+                const replyRef = item.reply as AppBskyFeedPost.ReplyRef | undefined;
+                return replyRef?.root.uri === currentRootUri && 
+                       replyRef?.parent.uri === currentParentUri;
+            }
+            
+            return !item.reply;
+        });
     }
 
     private async uploadMedia(url: string, alt: string, isVideo = false): Promise<MediaUpload> {
         try {
             const response = await axios.get(url, {
                 responseType: 'arraybuffer',
-                headers: { Range: 'bytes=0-' + (isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE) }
+                headers: { Range: `bytes=0-${(isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE) - 1}` }
             });
             const buffer = Buffer.from(response.data);
             const { data: { blob } } = await this.agent.uploadBlob(buffer, {
@@ -123,7 +140,7 @@ export default class BlueskyBot {
     }
 
     async postContent(post: PostContent, isReply = false): Promise<void> {
-        if (await this.isDuplicatePost(post)) {
+        if (await this.isDuplicatePost(post, isReply)) {
             console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
             return;
         }
@@ -182,8 +199,6 @@ export default class BlueskyBot {
                 text: richText.text,
                 facets: richText.facets,
                 createdAt: post.created_at,
-                indexedAt: new Date().toISOString(),
-                sortAt: post.created_at,
                 ...(embed && { embed }),
                 ...(isReply && { reply: this.getReplyRef() }),
             };
@@ -225,6 +240,7 @@ export default class BlueskyBot {
                 ...post,
                 content: i === 0 ? post.content : ' ',
                 video: video,
+                videos: undefined,
                 card: i === 0 ? post.card : undefined
             }, i > 0);
         }
@@ -247,6 +263,7 @@ export default class BlueskyBot {
                 ...post,
                 content,
                 video,
+                videos: undefined,
                 card: i === 0 ? post.card : undefined
             }, i > 0);
         }
