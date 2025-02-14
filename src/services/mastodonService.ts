@@ -112,7 +112,7 @@ function processVideo(attachments: MediaAttachment[]): Video[] {
                 width: meta.width,
                 height: meta.height,
                 duration: segmentDuration,
-                preview_url: addTimeParameter(media.preview_url, start)
+                preview_url: i === 0 ? media.preview_url : undefined
             }
         };
     });

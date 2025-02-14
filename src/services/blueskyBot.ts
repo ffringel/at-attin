@@ -1,15 +1,15 @@
-import axios from "axios";
-import { AppBskyFeedPost, RichText, AtpAgent, AppBskyFeedGetAuthorFeed } from "@atproto/api";
-import { altCardImage, bskyAccount, bskyApi } from "../config/config.js";
-import { CHUNK_BUFFER, MAX_IMAGE_SIZE, MAX_POST_LENGTH, MAX_POSTS, MAX_VIDEO_SIZE } from "../constants.js";
-import { BotOptions, MediaUpload, PostContent } from "../types.js";
+import axios from 'axios';
+import { AppBskyFeedPost, RichText, AtpAgent, AppBskyFeedGetAuthorFeed } from '@atproto/api';
+import { altCardImage, bskyAccount, bskyApi } from '../config/config.js';
+import { CHUNK_BUFFER, MAX_IMAGE_SIZE, MAX_POST_LENGTH, MAX_POSTS, MAX_VIDEO_SIZE } from '../constants.js';
+import { BotOptions, MediaUpload, PostContent } from '../types.js';
 
 export default class BlueskyBot {
     private agent: AtpAgent;
-    private rootUri = "";
-    private rootCid = "";
-    private parentUri = "";
-    private parentCid = "";
+    private rootUri = '';
+    private rootCid = '';
+    private parentUri = '';
+    private parentCid = '';
     private dryRun = false;
     private feed?: AppBskyFeedGetAuthorFeed.Response;
 
@@ -35,13 +35,35 @@ export default class BlueskyBot {
         this.feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: this.agent.session?.did || '',
             limit: MAX_POSTS,
+            filter: 'posts_with_replies'
         });
     }
 
-    private async isDuplicatePost(post: PostContent, isReply: boolean): Promise<boolean> {
-        return this.feed!.data.feed.some((item) =>
-            !isReply && (item.post.record as AppBskyFeedPost.Record).text.trim() === post.content.trim()
-        );
+    private async isDuplicatePost(post: PostContent): Promise<boolean> {
+        const text = post.content.trim();
+        
+        // Helper function to check a post and its parent chain
+        const checkPostAndAncestors = (postView: any): boolean => {
+            // Check current post
+            const currentText = (postView.post.record as AppBskyFeedPost.Record).text.trim();
+            if (currentText === text) return true;
+    
+            // Check parent chain if exists
+            if (postView.reply) {
+                // Check parent post
+                const parentText = (postView.reply.parent.record as AppBskyFeedPost.Record).text.trim();
+                if (parentText === text) return true;
+    
+                // Check root post
+                const rootText = (postView.reply.root.record as AppBskyFeedPost.Record).text.trim();
+                if (rootText === text) return true;
+            }
+    
+            return false;
+        };
+    
+        // Check all posts and their parent/root relationships
+        return this.feed!.data.feed.some(item => checkPostAndAncestors(item));
     }
 
     private async uploadMedia(url: string, alt: string, isVideo = false): Promise<MediaUpload> {
@@ -101,7 +123,7 @@ export default class BlueskyBot {
     }
 
     async postContent(post: PostContent, isReply = false): Promise<void> {
-        if (await this.isDuplicatePost(post, isReply)) {
+        if (await this.isDuplicatePost(post)) {
             console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
             return;
         }
@@ -167,7 +189,7 @@ export default class BlueskyBot {
             };
 
             if (this.dryRun) {
-                console.log('Dry run - would post:', JSON.stringify(postRecord, null, 2));
+                console.log('Dry run - would post:', postRecord);
                 return;
             }
 
