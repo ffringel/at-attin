@@ -36,6 +36,9 @@ function processPosts(response: Status[]): PostContent[] {
             videos: processVideo(post.media_attachments),
             card: processCard(post.card || undefined)
         }
+    })
+    .sort((a, b) => {
+        return Date.parse(a.created_at) - Date.parse(b.created_at)
     });
 }
 
