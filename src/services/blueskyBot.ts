@@ -35,52 +35,36 @@ export default class BlueskyBot {
         this.feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: this.agent.session?.did || '',
             limit: MAX_POSTS,
-            filter: 'posts_with_replies'
         });
     }
 
-    private async isDuplicatePost(post: PostContent, isReply: boolean): Promise<boolean> {
+    private async isDuplicatePost(post: PostContent , isReply: boolean): Promise<boolean> {
         const text = post.content.trim();
-        const currentRootUri = this.rootUri;
-        const currentParentUri = this.parentUri;
+        const parentUri = isReply ? this.parentUri : null;
+        
+        const checkPostAndAncestors = (postView: any): boolean => {
+            const currentText = (postView.post.record as AppBskyFeedPost.Record)?.text;
+            if (currentText === text) return true;
+
+            if (isReply && this.parentUri) {
+                const existingParentUri = postView.reply?.parent?.uri;
+                if (existingParentUri === parentUri && currentText === text) {
+                    return true;
+                }
+            }
     
-        // Check parent/root texts in the feed
-        if (isReply) {
-            // Find parent post in feed with proper typing
-            const parentPost = this.feed!.data.feed.find(item => 
-                item.post.uri === currentParentUri
-            );
-            const parentRecord = parentPost?.post.record as AppBskyFeedPost.Record | undefined;
-            const parentText = parentRecord?.text?.trim() || '';
-            if (parentText === text) return true;
+            if (postView.reply) {
+                const parentText = (postView.reply?.parent?.record as AppBskyFeedPost.Record)?.text
+                if (parentText === text) return true;
     
-            // Find root post in feed (if different from parent)
-            if (currentRootUri && currentRootUri !== currentParentUri) {
-                const rootPost = this.feed!.data.feed.find(item => 
-                    item.post.uri === currentRootUri
-                );
-                const rootRecord = rootPost?.post.record as AppBskyFeedPost.Record | undefined;
-                const rootText = rootRecord?.text?.trim() || '';
+                const rootText = (postView.reply?.root?.record as AppBskyFeedPost.Record)?.text;
                 if (rootText === text) return true;
             }
-        }
     
-        return this.feed!.data.feed.some(item => {
-            const record = item.post.record as AppBskyFeedPost.Record;
-          
-            // Check text content
-            const itemText = record?.text?.trim() || '';
-            if (itemText !== text) return false;
+            return false;
+        };
     
-            // Thread validation
-            if (isReply) {
-                const replyRef = item.reply as AppBskyFeedPost.ReplyRef | undefined;
-                return replyRef?.root.uri === currentRootUri && 
-                       replyRef?.parent.uri === currentParentUri;
-            }
-            
-            return !item.reply;
-        });
+        return this.feed!.data.feed.some(item => checkPostAndAncestors(item));
     }
 
     private async uploadMedia(url: string, alt: string, isVideo = false): Promise<MediaUpload> {
