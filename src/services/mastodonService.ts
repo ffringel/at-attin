@@ -95,7 +95,7 @@ function processImages(attachments: MediaAttachment[]): Image[] {
  * Proccess Video Media Attachment
  */
 function processVideo(attachments: MediaAttachment[]): Video | undefined {
-    if (!attachments.length) return undefined
+    if (!attachments.length || !isVideo(attachments[0])) return undefined
     
     const [media] = attachments;   // Only a single video is present
     const meta = media.meta.original as Mastodon.JSON.VideoAttachmentMeta
