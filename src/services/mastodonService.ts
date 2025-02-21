@@ -1,6 +1,6 @@
 import * as Mastodon from 'tsl-mastodon-api';
 import { bskyAccount, giveaways, mastodonApi, sourceAccountId } from '../config/config.js';
-import { MAX_POSTS, REGEX, VIDEO_CONFIG } from '../constants.js';
+import { MAX_POSTS, REGEX } from '../constants.js';
 import { Card, Image, PostContent, Video } from '../types.js'
 
 // Use Mastodon's built-in types
@@ -33,7 +33,7 @@ function processPosts(response: Status[]): PostContent[] {
             created_at: post.created_at,
             content: sanitizeContent(post.content),
             images: processImages(post.media_attachments),
-            videos: processVideo(post.media_attachments),
+            video: processVideo(post.media_attachments),
             card: processCard(post.card || undefined)
         }
     })
@@ -94,29 +94,21 @@ function processImages(attachments: MediaAttachment[]): Image[] {
 /**
  * Proccess Video Media Attachment
  */
-function processVideo(attachments: MediaAttachment[]): Video[] {
-    if (!attachments.length) return []
+function processVideo(attachments: MediaAttachment[]): Video | undefined {
+    if (!attachments.length) return undefined
     
     const [media] = attachments;   // Only a single video is present
     const meta = media.meta.original as Mastodon.JSON.VideoAttachmentMeta
-    const duration = meta.duration || 0;
-    const segmentCount = Math.ceil(duration / VIDEO_CONFIG.SEGMENT_DURATION);
 
-    return Array.from({ length: segmentCount }, (_, i) => {
-        const start = i * VIDEO_CONFIG.SEGMENT_DURATION;
-        const segmentDuration = Math.min(VIDEO_CONFIG.SEGMENT_DURATION, duration - start);
-        const end = start + segmentDuration;
-    
-        return {
-            url: `${media.url}#t=${start},${end}`,
-            metadata: {
-                width: meta.width,
-                height: meta.height,
-                duration: segmentDuration,
-                preview_url: i === 0 ? media.preview_url : undefined
-            }
-        };
-    });
+    return {
+        url: media.url!,
+        metadata: {
+            width: meta.width,
+            height: meta.height,
+            duration: meta.duration,
+            preview_url: media.preview_url
+        }
+    };
 }
 
 /**
@@ -132,4 +124,4 @@ function processCard(card?: CardData): Card | undefined {
         description: card?.description,
         image: imageUrl,
     };
-  }
+}

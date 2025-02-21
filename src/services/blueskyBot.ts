@@ -3,6 +3,7 @@ import { AppBskyFeedPost, RichText, AtpAgent, AppBskyFeedGetAuthorFeed } from '@
 import { altCardImage, bskyAccount, bskyApi } from '../config/config.js';
 import { CHUNK_BUFFER, MAX_IMAGE_SIZE, MAX_POST_LENGTH, MAX_POSTS, MAX_VIDEO_SIZE } from '../constants.js';
 import { BotOptions, MediaUpload, PostContent } from '../types.js';
+import { FeedViewPost } from '@atproto/api/dist/client/types/app/bsky/feed/defs.js';
 
 export default class BlueskyBot {
     private agent: AtpAgent;
@@ -42,7 +43,7 @@ export default class BlueskyBot {
         const text = post.content.trim();
         const parentUri = isReply ? this.parentUri : null;
         
-        const checkPostAndAncestors = (postView: any): boolean => {
+        const checkPostAndAncestors = (postView: FeedViewPost): boolean => {
             const currentText = (postView.post.record as AppBskyFeedPost.Record)?.text;
             if (currentText === text) return true;
 
@@ -209,47 +210,13 @@ export default class BlueskyBot {
     }
 
     private async handleShortPost(post: PostContent): Promise<void> {
-        if (!post.videos?.length) {
-            await this.postContent({
-                created_at: post.created_at,
-                content: post.content,
-                images: post.images,
-                card: post.card
-            })
-            return
-        } 
-
-        for (const [i, video] of post.videos.entries()) {
-            await this.postContent({
-                ...post,
-                content: i === 0 ? post.content : ' ',
-                video: video,
-                videos: undefined,
-                card: i === 0 ? post.card : undefined
-            }, i > 0);
-        }
+        await this.postContent(post)
     }
 
     private async handleLongPost(post: PostContent) {
         const chunks = this.splitLongPost(post.content);
-        if (!post.videos?.length) {
-            for (const [i, chunk] of chunks.entries()) {
-                await this.postContent({ ...post, content: chunk }, i > 0);
-            }
-            return
-        }
-        
-        const postCount = Math.max(chunks.length, post.videos.length);
-        for (let i = 0; i < postCount; i++) {
-            const content = i < chunks.length ? chunks[i] : ' ';
-            const video = post.videos[i];
-            await this.postContent({
-                ...post,
-                content,
-                video,
-                videos: undefined,
-                card: i === 0 ? post.card : undefined
-            }, i > 0);
+        for (const [i, chunk] of chunks.entries()) {
+            await this.postContent({ ...post, content: chunk }, i > 0);
         }
     }
 

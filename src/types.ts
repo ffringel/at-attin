@@ -9,7 +9,6 @@ export interface PostContent {
     created_at: string;
     content: string;
     images?: Image[],
-    videos?: Video[],
     video?: Video,
     card?: Card;
 };
