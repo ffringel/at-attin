@@ -84,9 +84,14 @@ function isVideo(media: MediaAttachment): boolean {
  */
 function processImages(attachments: MediaAttachment[]): Image[] {
     return attachments.flatMap(media => {
+        const meta = media.meta as Mastodon.JSON.ImageAttachmentMeta
         return !isVideo(media) ? {
             url: media.url || '',
-            alt: media.description || ''
+            alt: media.description || '',
+            aspectRatio: {
+                width: meta.original.width,
+                height: meta.original.height,
+            }
         } : []
     })
 }

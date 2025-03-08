@@ -16,6 +16,10 @@ export interface PostContent {
 export interface Image {
     url: string;
     alt?: string;
+    aspectRatio?: {
+        width?: number;
+        height?: number;
+    }
 }
 
 export interface Video {
