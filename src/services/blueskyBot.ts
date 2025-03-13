@@ -216,7 +216,11 @@ export default class BlueskyBot {
     private async handleLongPost(post: PostContent) {
         const chunks = this.splitLongPost(post.content);
         for (const [i, chunk] of chunks.entries()) {
-            await this.postContent({ ...post, content: chunk }, i > 0);
+            const updatedPost = i === 0 
+                ? { ...post, content: chunk } 
+                : { created_at: post.created_at, content: chunk };
+                
+            await this.postContent(updatedPost, i > 0);
         }
     }
 
