@@ -80,19 +80,28 @@ function isVideo(media: MediaAttachment): boolean {
 }
 
 /**
+ * Check for unknown media Attachments
+ */
+function isUnknownMedia(media: MediaAttachment): boolean {
+    return media.type === 'unknown'
+}
+
+/**
  * Proccess Image Media Attachment
  */
 function processImages(attachments: MediaAttachment[]): Image[] {
-    return attachments.flatMap(media => {
-        const meta = media.meta as Mastodon.JSON.ImageAttachmentMeta
-        return !isVideo(media) ? {
-            url: media.url || '',
-            alt: media.description || '',
-            aspectRatio: {
-                width: meta.original.width,
-                height: meta.original.height,
-            }
-        } : []
+    return attachments
+        .filter(media => !isUnknownMedia(media))
+        .flatMap(media => {
+            const meta = media.meta as Mastodon.JSON.ImageAttachmentMeta
+            return !isVideo(media) ? {
+                url: media.url || '',
+                alt: media.description || '',
+                aspectRatio: {
+                    width: meta.original.width,
+                    height: meta.original.height,
+                }
+            } : []
     })
 }
 
@@ -100,10 +109,10 @@ function processImages(attachments: MediaAttachment[]): Image[] {
  * Proccess Video Media Attachment
  */
 function processVideo(attachments: MediaAttachment[]): Video | undefined {
-    if (!attachments.length || !isVideo(attachments[0])) return undefined
+    if (!attachments.length || !isVideo(attachments[0]) || isUnknownMedia(attachments[0])) return undefined
     
     const [media] = attachments;   // Only a single video is present
-    const meta = media.meta.original as Mastodon.JSON.VideoAttachmentMeta
+    const meta = media.meta.original as Mastodon.JSON.VideoAttachmentMetaOriginal
 
     return {
         url: media.url!,
