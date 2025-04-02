@@ -42,30 +42,26 @@ export default class BlueskyBot {
     private async isDuplicatePost(post: PostContent , isReply: boolean): Promise<boolean> {
         const text = post.content.trim();
         const parentUri = isReply ? this.parentUri : null;
-        
-        const checkPostAndAncestors = (postView: FeedViewPost): boolean => {
-            const currentText = (postView.post.record as AppBskyFeedPost.Record)?.text;
-            if (currentText === text) return true;
 
-            if (isReply && this.parentUri) {
-                const existingParentUri = postView.reply?.parent?.uri;
-                if (existingParentUri === parentUri && currentText === text) {
+        if (!this.feed?.data?.feed) return false;
+
+        const checkPost = (postView: FeedViewPost): boolean => {
+            const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
+            const currentText = currentRecord?.text?.trim();
+ 
+            if (currentText === text) return true;
+    
+            if (isReply && parentUri) {
+                const replyParentUri = postView.reply?.parent?.uri;
+                if (replyParentUri === parentUri && currentText === text) {
                     return true;
                 }
-            }
-    
-            if (postView.reply) {
-                const parentText = (postView.reply?.parent?.record as AppBskyFeedPost.Record)?.text
-                if (parentText === text) return true;
-    
-                const rootText = (postView.reply?.root?.record as AppBskyFeedPost.Record)?.text;
-                if (rootText === text) return true;
             }
     
             return false;
         };
     
-        return this.feed!.data.feed.some(item => checkPostAndAncestors(item));
+        return this.feed.data.feed.some(checkPost);
     }
 
     private async uploadMedia(url: string, alt: string, isVideo = false): Promise<MediaUpload> {
