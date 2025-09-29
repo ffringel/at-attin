@@ -1,0 +1,23 @@
+name: "Jeff Zrebiec"
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm ci
+      - run: npm run build
+      - name: Send post
+        run: npm start
+        env:
+          BSKY_HANDLE: "jeffzrebiec.bsky.social"
+          BSKY_PASSWORD: ${{ secrets.JEFF_ZREBIEC_BSKY_PASSWORD }}
+          MASTODON_HANDLE: "@jeffzrebiec@sportsbots.xyz"
+          MASTODON_ACCOUNT_ID: "109706769384211873"
+          ALT_CARD_IMG: "https://pbs.twimg.com/profile_images/541073151115800576/LhDej9-V_400x400.jpeg"
