@@ -1,22 +1,24 @@
 import * as Mastodon from 'tsl-mastodon-api';
-import { bskyAccount, giveaways, mastodonApi, sourceAccountId } from '../config/config.js';
+import { bskyAccount, access_token, giveaways, mastodonApi, sourceAccountId } from '../config/config.js';
 import { MAX_POSTS, REGEX } from '../constants.js';
 import { Card, Image, PostContent, Video } from '../types.js'
 
-// Use Mastodon's built-in types
+// Use Mastodon's built-in types (JSON validation proxies from tsl-mastodon-api)
 type Status = Mastodon.JSON.Status;
 type MediaAttachment = Mastodon.JSON.MediaAttachment;
 type CardData = Mastodon.JSON.Card;
 
-// Mastodon Client
-const mastodon = new Mastodon.API({access_token: "", api_url: mastodonApi})
+/**
+ * Mastodon Client - access_token loaded from config (env var MASTODON_ACCESS_TOKEN via GitHub Secrets)
+ */
+const mastodon = new Mastodon.API({access_token, api_url: mastodonApi})
 
 /**
  * Main function to fetch and process Mastodon posts.
  */
 export default async function getPosts(): Promise<PostContent[]> {
     try {
-        const response = await mastodon.getStatuses(sourceAccountId, {limit: MAX_POSTS});   
+        const response = await mastodon.getStatuses(sourceAccountId, {limit: MAX_POSTS});
         return processPosts(response.json)
     } catch (error) {
         console.error('Failed to process Mastodon posts:', error)
@@ -64,10 +66,11 @@ function sanitizeContent(content: string): string {
 }
 
 /**
- * Determine if post content contains giveway
+ * Determine if post content contains giveaway keywords
  */
 function containsGiveaway(content: string): boolean {
-    return giveaways.some((s: string) => 
+    // Use optional chaining with empty array fallback to prevent runtime errors during local dev testing or CI dry-run mode without env var set
+    return (giveaways || []).some((s) =>
         s && content.toUpperCase().includes(s.toUpperCase())
     );
 }
