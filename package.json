@@ -1,33 +1,41 @@
 {
   "name": "at-attin",
   "version": "1.0.0",
-  "description": "A bluesky bot that mirrors some of my favorite twitter accounts",
+  "description": "A bluesky bot that mirrors posts from Mastodon to Bluesky",
   "main": "dist/index.js",
+  "type": "module",
+  "workspaces": [
+    "src/packages/*"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc",
+    "build": "tsc -b",
+    "build:types": "npm run build -w @at-attin/types",
+    "build:mastodon": "npm run build -w @at-attin/mastodon",
+    "build:bluesky": "npm run build -w @at-attin/bluesky",
+    "build:all": "npm run build:types && npm run build:mastodon && npm run build:bluesky && npm run build",
     "lint": "eslint src/",
     "lint:fix": "eslint --fix .",
     "start": "node .",
-    "dev": "nodenv ."
+    "dev": "nodenv .",
+    "clean": "rm -rf dist src/packages/*/dist"
   },
   "keywords": [
     "bsky",
     "bluesky",
-    "atproto"
+    "atproto",
+    "mastodon",
+    "fediverse"
   ],
   "author": {
     "name": "Blaise Kpwe",
     "email": "blaisekpwe@gmail.com"
   },
   "license": "MIT",
-  "type": "module",
   "dependencies": {
-    "@atproto/api": "^0.13.35",
-    "axios": "1.15.2",
-    "node-html-parser": "^7.0.1",
-    "tsl-mastodon-api": "^0.5.2",
-    "zod": "^3.24.1"
+    "@at-attin/bluesky": "^1.0.0",
+    "@at-attin/mastodon": "^1.0.0",
+    "@at-attin/types": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",

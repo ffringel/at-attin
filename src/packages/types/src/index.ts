@@ -8,10 +8,10 @@ export interface BotOptions {
 export interface PostContent {
     created_at: string;
     content: string;
-    images?: Image[],
-    video?: Video,
+    images?: Image[];
+    video?: Video;
     card?: Card;
-};
+}
 
 export interface Image {
     url: string;
@@ -19,11 +19,12 @@ export interface Image {
     aspectRatio?: {
         width?: number;
         height?: number;
-    }
+    };
 }
 
 export interface Video {
     url: string;
+    alt?: string;  // Alt text for accessibility (max 1000 graphemes)
     metadata?: VideoMetadata;
 }
 
@@ -32,14 +33,14 @@ export interface VideoMetadata {
     height?: number;
     duration?: number;
     preview_url?: string;
-};
+}
 
 export interface Card {
     uri?: string;
     title?: string;
     description?: string;
     image?: string;
-  };
+}
 
 export interface MediaUpload {
     blob: BlobRef;

@@ -1,0 +1,24 @@
+{
+  "name": "@at-attin/mastodon",
+  "version": "1.0.0",
+  "description": "Mastodon API client for fetching and processing posts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/"
+  },
+  "keywords": ["mastodon", "api", "fediverse", "activitypub"],
+  "author": {
+    "name": "Blaise Kpwe",
+    "email": "blaisekpwe@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@at-attin/types": "^1.0.0",
+    "tsl-mastodon-api": "^0.5.2"
+  }
+}
