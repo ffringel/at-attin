@@ -117,7 +117,7 @@ export default class MastodonService {
         return statuses
             .filter((post) => !post.reblog)
             .map(post => {
-                const quotedStatus = processQuotedStatus(post.quote ?? null, this.sanitizer);
+                const quotedStatus = this.processQuotedStatus(post.quote ?? null);
 
                 // Extract status ID from cross-posted social URLs (Twitter, sportsbots.xyz, etc.)
                 // These are used to map Mastodon posts to Bluesky posts for quote functionality
@@ -160,7 +160,7 @@ export default class MastodonService {
                     card: processCard(post.card ?? undefined),
                     quotedStatus,
                     mastodonId: post.id,
-                    crossPostId: crossPostId,
+                    crossPostId,
                 };
                 return result;
             })
@@ -171,34 +171,33 @@ export default class MastodonService {
             });
     }
 
-}
+    /**
+     * Process quote status from Mastodon
+     * Mastodon v4.5+ uses quote.quoted_status for quote posts
+     */
+    private processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedStatus'] {
+        // Only process if quote is accepted and has a quoted status
+        if (!quote || quote.state !== 'accepted' || !quote.quoted_status) {
+            return undefined;
+        }
 
-/**
- * Process quote status from Mastodon
- * Mastodon v4.5+ uses quote.quoted_status for quote posts
- */
-function processQuotedStatus(quote: MastodonQuote | null, sanitizer: Sanitizer): PostContent['quotedStatus'] {
-    // Only process if quote is accepted and has a quoted status
-    if (!quote || quote.state !== 'accepted' || !quote.quoted_status) {
-        return undefined;
+        const quoted = quote.quoted_status;
+        return {
+            // uri is always a string on a Mastodon status; url is string | null |
+            // undefined. Emit the raw values (no '' coercion) — QuotedStatus now
+            // models both as optional, and downstream treats '' and undefined the
+            // same (truthy guards / ?. chains).
+            uri: quoted.uri,
+            url: quoted.url ?? undefined,
+            content: this.sanitizer.sanitizeQuoted(quoted.content),
+            account: {
+                id: quoted.account.id,
+                username: quoted.account.username,
+                acct: quoted.account.acct,
+                display_name: quoted.account.display_name,
+            },
+            // Store the Mastodon post ID for mapping to Bluesky
+            mastodonId: quoted.id,
+        };
     }
-
-    const quoted = quote.quoted_status;
-    return {
-        // uri is always a string on a Mastodon status; url is string | null |
-        // undefined. Emit the raw values (no '' coercion) — QuotedStatus now
-        // models both as optional, and downstream treats '' and undefined the
-        // same (truthy guards / ?. chains).
-        uri: quoted.uri,
-        url: quoted.url ?? undefined,
-        content: sanitizer.sanitizeQuoted(quoted.content),
-        account: {
-            id: quoted.account.id,
-            username: quoted.account.username,
-            acct: quoted.account.acct,
-            display_name: quoted.account.display_name,
-        },
-        // Store the Mastodon post ID for mapping to Bluesky
-        mastodonId: quoted.id,
-    };
 }

@@ -2,13 +2,13 @@ import type { JSON as MastodonJSON } from 'tsl-mastodon-api';
 type MediaAttachment = MastodonJSON.MediaAttachment;
 type Card = MastodonJSON.Card;
 import type { Image, Video, Card as CardType } from '@at-attin/types';
-import { isProcessableAsImage, isVideo, isUnknownMedia } from './typeGuards.js';
+import { isProcessableAsImage, isVideo } from './typeGuards.js';
 
 /**
  * Process image media attachments with proper type safety
  */
-export function processImages(attachments: MediaAttachment[]): Image[] {
-    return attachments
+export function processImages(attachments: MediaAttachment[]): Image[] | undefined {
+    const images = attachments
         .filter(isProcessableAsImage)
         // Drop attachments with no usable URL (e.g. media still processing on
         // the Mastodon side) rather than emitting url: '' that later surfaces
@@ -27,13 +27,18 @@ export function processImages(attachments: MediaAttachment[]): Image[] {
                 } : undefined,
             };
         });
+
+    // Match processVideo's "no media → undefined" semantics so an empty
+    // result isn't allocated as `[]` (consumers guard with .length > 0 either
+    // way, so this is a precision change with no behavior difference).
+    return images.length ? images : undefined;
 }
 
 /**
  * Process video media attachment
  */
 export function processVideo(attachments: MediaAttachment[]): Video | undefined {
-    if (!attachments.length || !isVideo(attachments[0]) || isUnknownMedia(attachments[0])) {
+    if (!attachments.length || !isVideo(attachments[0])) {
         return undefined;
     }
 
