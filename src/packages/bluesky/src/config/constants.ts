@@ -21,6 +21,14 @@ export const MAX_IMAGES_PER_POST = 4;
 // exceed this, so the alt is truncated to 1000 graphemes before posting
 // (grapheme-correct, not code-unit — see utils/textUtils.ts).
 export const MAX_VIDEO_ALT_LENGTH = 1000;
+// NOTE on image alt: app.bsky.embed.images#image.alt has NO maxGraphemes /
+// maxLength in the lexicon (verified against bluesky-social/atproto main,
+// July 2026) — unlike video alt. So image alt text is intentionally NOT
+// truncated (processImages / buildImagesEmbed pass it through verbatim).
+// Truncating would invent a constraint the platform doesn't enforce and could
+// cut off legitimate long accessibility descriptions. If a future lexicon
+// revision adds a bound, mirror MAX_VIDEO_ALT_LENGTH + truncateToGraphemes
+// here at that time.
 
 // Retry configuration
 export const BASE_RETRY_DELAY = 1000;     // 1s base for exponential backoff
