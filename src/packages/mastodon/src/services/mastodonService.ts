@@ -1,7 +1,7 @@
 import type { PostContent } from '@at-attin/types';
 import * as Mastodon from 'tsl-mastodon-api';
 import { MastodonAPIError, handleMastodonError } from '../utils/errorHandling.js';
-import { sanitizeContent } from '../utils/contentSanitizer.js';
+import { Sanitizer } from '../utils/contentSanitizer.js';
 import { processImages, processVideo, processCard } from '../utils/mediaProcessor.js';
 import { MAX_POSTS } from '../config/constants.js';
 
@@ -31,12 +31,18 @@ export interface MastodonServiceConfig {
 export default class MastodonService {
     private readonly api: Mastodon.API;
     private readonly config: MastodonServiceConfig;
+    private readonly sanitizer: Sanitizer;
 
     constructor(config: MastodonServiceConfig) {
         this.config = config;
         this.api = new Mastodon.API({
             access_token: config.accessToken,
             api_url: config.apiUrl,
+        });
+        this.sanitizer = new Sanitizer({
+            blueskyHandle: config.blueskyHandle,
+            sourceAccountId: config.sourceAccountId,
+            giveaways: config.giveaways,
         });
     }
 
@@ -85,7 +91,7 @@ export default class MastodonService {
         return statuses
             .filter((post) => !post.reblog)
             .map(post => {
-                const quotedStatus = processQuotedStatus((post as any).quote ?? null);
+                const quotedStatus = processQuotedStatus((post as any).quote ?? null, this.sanitizer);
 
                 // Extract status ID from cross-posted social URLs (Twitter, sportsbots.xyz, etc.)
                 // These are used to map Mastodon posts to Bluesky posts for quote functionality
@@ -122,15 +128,7 @@ export default class MastodonService {
 
                 const result: PostContent = {
                     created_at: post.created_at,
-                    content: sanitizeContent(content, {
-                        blueskyHandle: this.config.blueskyHandle,
-                        accountRegex: new RegExp(this.config.sourceAccountId, 'g'),
-                        serverRegex: new RegExp(
-                            '@' + this.config.sourceAccountId.split('@')[2],
-                            'g'
-                        ),
-                        giveaways: this.config.giveaways,
-                    }),
+                    content: this.sanitizer.sanitize(content),
                     images: processImages(post.media_attachments),
                     video: processVideo(post.media_attachments),
                     card: processCard(post.card ?? undefined),
@@ -153,7 +151,7 @@ export default class MastodonService {
  * Process quote status from Mastodon
  * Mastodon v4.5+ uses quote.quoted_status for quote posts
  */
-function processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedStatus'] {
+function processQuotedStatus(quote: MastodonQuote | null, sanitizer: Sanitizer): PostContent['quotedStatus'] {
     // Only process if quote is accepted and has a quoted status
     if (!quote || quote.state !== 'accepted' || !quote.quoted_status) {
         return undefined;
@@ -163,11 +161,7 @@ function processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedSt
     return {
         uri: quoted.uri ?? '',
         url: quoted.url ?? '',
-        content: sanitizeContent(quoted.content, {
-            blueskyHandle: '',
-            accountRegex: new RegExp(''),
-            serverRegex: new RegExp(''),
-        }),
+        content: sanitizer.sanitizeQuoted(quoted.content),
         account: {
             id: quoted.account.id,
             username: quoted.account.username,
