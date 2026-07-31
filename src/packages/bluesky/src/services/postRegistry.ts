@@ -83,38 +83,23 @@ export class PostRegistry {
     }
 
     /**
-     * Extract Mastodon post ID from post content
-     */
-    private extractMastodonId(post: PostContent): string | undefined {
-        if (post.mastodonId) {
-            return post.mastodonId;
-        }
-        if (post.quotedStatus?.url) {
-            const match = post.quotedStatus.url.match(/(\d+)$/);
-            if (match) return match[1];
-        }
-        return undefined;
-    }
-
-    /**
-     * Store mappings for quote post support and duplicate detection
+     * Store mappings for duplicate detection (and, for cross-posted IDs,
+     * quote resolution). Maps this post's own Mastodon ID and cross-post ID
+     * to the Bluesky URI just created.
+     *
+     * Note: the quoted status's ID is intentionally NOT mapped here. Its
+     * Bluesky URI is the quotee's, not this (the quoter's) post's URI, and
+     * the quotee's correct mapping is established separately — by
+     * `storeDuplicateMappings` when the quotee was already mirrored, or by
+     * this same method's own-ID path when the quotee itself is posted.
+     * Mapping quotedId → response.uri here would point quote resolution at
+     * the quoter and overwrite a correct quotee mapping.
      */
     storeMappings(post: PostContent, response: { uri: string; cid: string }): void {
         // Track Mastodon post ID to prevent duplicates
-        const mastodonId = this.extractMastodonId(post);
-        if (mastodonId) {
-            this.postedIds.add(mastodonId);
-            this.idToUri.set(mastodonId, response.uri);
-        }
-
-        // Store mapping for quoted status ID
-        if (post.quotedStatus) {
-            const quotedId = post.quotedStatus.mastodonId ||
-                             post.quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
-                             post.quotedStatus.url?.match(/\/(\d+)$/)?.[1];
-            if (quotedId) {
-                this.idToUri.set(quotedId, response.uri);
-            }
+        if (post.mastodonId) {
+            this.postedIds.add(post.mastodonId);
+            this.idToUri.set(post.mastodonId, response.uri);
         }
 
         // Store mapping for cross-post ID
