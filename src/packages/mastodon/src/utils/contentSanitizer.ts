@@ -6,23 +6,33 @@ import { REGEX } from '../config/constants.js';
 export interface SanitizerConfig {
     /** Bluesky handle substituted for the source account reference. */
     blueskyHandle: string;
-    /** Source Mastodon account ID (e.g. "@user@domain") — builds the account/server regexes. */
-    sourceAccountId: string;
+    /** Source Mastodon account handle in "@user@domain" form — builds the
+     *  account/server regexes. NOT the numeric account ID. */
+    sourceAccount: string;
     /** Giveaway keywords that trigger a disclaimer append. */
     giveaways?: string[];
 }
 
-// Zero-match regex used when sanitizing quoted (foreign-account) content,
-// which must not be rewritten for the source account. Reused safely: a
-// non-global regex never advances lastIndex, and String.replace with it
-// replaces a single empty match — a no-op when the replacement is ''.
-const EMPTY_REGEX = new RegExp('');
+/** Escape regex metacharacters in a literal string used to build a RegExp. */
+function escapeRegex(literal: string): string {
+    return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// A regex that never matches anywhere, used as a "disabled" sentinel for the
+// account/server rewrite (e.g. when sanitizing quoted foreign-account content,
+// or when the source handle is empty/malformed). Unlike `new RegExp('')` —
+// which matches the empty string once at position 0 and so is only a no-op
+// when the replacement is '' — this is a true no-op regardless of replacement,
+// so it's safe even when the replacement is the (non-empty) Bluesky handle.
+// `(?!)` is a negative lookahead of an empty pattern: the empty pattern always
+// matches, so the negative lookahead always fails.
+const NEVER_REGEX = /(?!)/;
 
 /**
  * Sanitizes Mastodon HTML content into Bluesky plain text.
  *
  * A single instance compiles the account/server regexes once (from the
- * sourceAccountId) and reuses them across every post, instead of rebuilding
+ * sourceAccount handle) and reuses them across every post, instead of rebuilding
  * them per status. String.replace with a global regex always runs a fresh
  * full scan and resets lastIndex, so reusing the compiled regexes is safe.
  */
@@ -33,8 +43,25 @@ export class Sanitizer {
     private readonly giveaways?: string[];
 
     constructor(config: SanitizerConfig) {
-        this.accountRegex = new RegExp(config.sourceAccountId, 'g');
-        this.serverRegex = new RegExp('@' + config.sourceAccountId.split('@')[2], 'g');
+        // accountRegex matches the source account's "@user@domain" handle so
+        // self-references are rewritten to the Bluesky handle. Built from the
+        // handle (NOT the numeric account ID — the prior code passed the ID,
+        // so split('@')[2] was undefined and serverRegex became /@undefined/g,
+        // a no-op that stripped nothing). Escaped so handle characters are
+        // treated literally. Guarded: an empty handle falls back to a no-op
+        // regex rather than matching the empty string everywhere (which would
+        // insert the Bluesky handle between every character).
+        this.accountRegex = config.sourceAccount
+            ? new RegExp(escapeRegex(config.sourceAccount), 'g')
+            : NEVER_REGEX;
+        // serverRegex strips the "@domain" suffix from same-server mentions
+        // (e.g. "@other@sportsbots.xyz" -> "@other"). Guarded: if the handle
+        // isn't "@user@domain" (no domain part), fall back to a no-op rather
+        // than /@/g, which would strip every '@' in the post.
+        const domain = config.sourceAccount.split('@')[2];
+        this.serverRegex = domain
+            ? new RegExp('@' + escapeRegex(domain), 'g')
+            : NEVER_REGEX;
         this.blueskyHandle = config.blueskyHandle;
         this.giveaways = config.giveaways;
     }
@@ -55,7 +82,7 @@ export class Sanitizer {
      * no handle/account/server rewriting and no giveaway disclaimer.
      */
     sanitizeQuoted(content: string): string {
-        return this.run(content, EMPTY_REGEX, EMPTY_REGEX, '', undefined);
+        return this.run(content, NEVER_REGEX, NEVER_REGEX, '', undefined);
     }
 
     private run(

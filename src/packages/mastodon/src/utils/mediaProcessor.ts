@@ -10,12 +10,15 @@ import { isProcessableAsImage, isVideo, isUnknownMedia } from './typeGuards.js';
 export function processImages(attachments: MediaAttachment[]): Image[] {
     return attachments
         .filter(isProcessableAsImage)
+        // Drop attachments with no usable URL (e.g. media still processing on
+        // the Mastodon side) rather than emitting url: '' that later surfaces
+        // as a bad upload target in the bluesky package.
+        .filter(media => media.url || media.preview_url)
         .map(media => {
             // Both ImageAttachment and GIFVAttachment have meta.original with width/height
             const original = media.meta?.original;
 
             return {
-                // Handle null url (can happen while media is processing)
                 url: media.url || media.preview_url || '',
                 alt: media.description || '',
                 aspectRatio: original ? {
@@ -41,9 +44,15 @@ export function processVideo(attachments: MediaAttachment[]): Video | undefined 
         return undefined;
     }
 
+    // No usable URL (e.g. video still processing) — treat as no video rather
+    // than emitting url: '' that later surfaces as a bad upload target.
+    const url = media.url || media.preview_url || '';
+    if (!url) {
+        return undefined;
+    }
+
     return {
-        // Handle null url (can happen while video is processing)
-        url: media.url || media.preview_url || '',
+        url,
         metadata: {
             width: original.width,
             height: original.height,

@@ -15,12 +15,27 @@ interface MastodonQuote {
 }
 
 /**
+ * A Mastodon status with the v4.5+ `quote` field, which tsl-mastodon-api's
+ * `JSON.Status` doesn't yet type. Modeled as a local intersection so we avoid
+ * global declaration-merging (which would couple us to the library's type
+ * surface and conflict if upstream ever ships its own `quote`). The cast is
+ * applied once at the fetch boundary; downstream code sees a typed `quote`.
+ */
+type MastodonStatus = Mastodon.JSON.Status & { quote?: MastodonQuote };
+
+/**
  * Configuration for Mastodon service
  */
 export interface MastodonServiceConfig {
-    accessToken: string;
+    /** Optional access token — public timelines (e.g. mastodon.social) need
+     *  no auth; passed to the library as `accessToken ?? ''`. */
+    accessToken?: string;
     apiUrl: string;
+    /** Numeric Mastodon account ID — used for API calls and own-quote detection. */
     sourceAccountId: string;
+    /** Source Mastodon handle in "@user@domain" form — used to build the
+     *  sanitizer's account/server regexes (NOT the numeric ID). */
+    sourceAccount: string;
     blueskyHandle: string;
     giveaways?: string[];
 }
@@ -36,12 +51,12 @@ export default class MastodonService {
     constructor(config: MastodonServiceConfig) {
         this.config = config;
         this.api = new Mastodon.API({
-            access_token: config.accessToken,
+            access_token: config.accessToken ?? '',
             api_url: config.apiUrl,
         });
         this.sanitizer = new Sanitizer({
             blueskyHandle: config.blueskyHandle,
-            sourceAccountId: config.sourceAccountId,
+            sourceAccount: config.sourceAccount,
             giveaways: config.giveaways,
         });
     }
@@ -63,13 +78,15 @@ export default class MastodonService {
      * from X-RateLimit-* headers after each request), and we make exactly one
      * request per run, so no manual delay or rate-limit logging is needed here.
      */
-    private async fetchStatuses(limit: number): Promise<Mastodon.JSON.Status[]> {
+    private async fetchStatuses(limit: number): Promise<MastodonStatus[]> {
         try {
             const response = await this.api.getStatuses(
                 this.config.sourceAccountId,
                 { limit }
             );
-            return response.json;
+            // Cast once at the fetch boundary: the library's JSON.Status
+            // doesn't type the v4.5+ `quote` field (see MastodonStatus above).
+            return response.json as MastodonStatus[];
         } catch (error) {
             // tsl-mastodon-api throws the raw API.Result object — a plain
             // object with .status/.json, NOT an Error — on any non-200
@@ -96,11 +113,11 @@ export default class MastodonService {
     /**
      * Process array of Mastodon statuses into PostContent
      */
-    private processPosts(statuses: Mastodon.JSON.Status[]): PostContent[] {
+    private processPosts(statuses: MastodonStatus[]): PostContent[] {
         return statuses
             .filter((post) => !post.reblog)
             .map(post => {
-                const quotedStatus = processQuotedStatus((post as any).quote ?? null, this.sanitizer);
+                const quotedStatus = processQuotedStatus(post.quote ?? null, this.sanitizer);
 
                 // Extract status ID from cross-posted social URLs (Twitter, sportsbots.xyz, etc.)
                 // These are used to map Mastodon posts to Bluesky posts for quote functionality
