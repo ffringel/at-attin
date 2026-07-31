@@ -4,6 +4,7 @@ import { MastodonClient } from './apiClient.js';
 import { handleMastodonError } from './errorHandling.js';
 import { sanitizeContent } from './contentSanitizer.js';
 import { processImages, processVideo, processCard } from './mediaProcessor.js';
+import { MAX_POSTS } from './constants.js';
 
 /**
  * Mastodon Quote type (v4.5+)
@@ -42,10 +43,10 @@ export default class MastodonService {
 
     /**
      * Fetch and process posts from a Mastodon account
-     * @param limit - Maximum number of posts to fetch
+     * @param limit - Maximum number of posts to fetch (defaults to MAX_POSTS constant)
      * @returns Processed posts ready for Bluesky
      */
-    async getPosts(limit: number = 20): Promise<PostContent[]> {
+    async getPosts(limit: number = MAX_POSTS): Promise<PostContent[]> {
         try {
             const statuses = await this.client.getStatuses(
                 this.config.sourceAccountId,
@@ -81,10 +82,19 @@ export default class MastodonService {
 
                 let content = post.content;
 
-                // If this is a quote post, strip the "RE: URL" prefix from content
-                // since we'll use a proper quote embed instead
+                // If this is a quote post, handle the content
                 if (quotedStatus) {
+                    // Strip the quote reference HTML
                     content = content.replace(/<p class="quote-inline">.*?<\/p>/g, '').trim();
+
+                    // If the quoted post is from a different account (not our own),
+                    // we can't create a quote embed. Instead, append the URL which
+                    // Bluesky will render as a link card.
+                    const isOwnQuote = quotedStatus.account?.acct === this.config.sourceAccountId;
+                    if (!isOwnQuote && quotedStatus.content) {
+                        // Append URL - Bluesky will create a link card
+                        content += `\n\n${quotedStatus.url}`;
+                    }
                 }
 
                 const result: PostContent = {

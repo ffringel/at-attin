@@ -8,6 +8,9 @@ import { EmbedBuilder } from './embedBuilder.js';
 import { PostBuilder } from './postBuilder.js';
 import { PostMapper } from './postMapper.js';
 
+// Number of posts to fetch (shared with Mastodon service)
+const MAX_POSTS = 20;
+
 /**
  * Handles all Bluesky posting operations including:
  * - Duplicate detection
@@ -43,7 +46,7 @@ export class PostService {
         const did = (this.agent as any).session?.did || this.agent.did || '';
         this.feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: did,
-            limit: 20,
+            limit: MAX_POSTS,
         });
     }
 

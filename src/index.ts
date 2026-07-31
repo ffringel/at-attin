@@ -13,7 +13,7 @@ const mastodonService = new MastodonService({
 
 // Run the bot
 BlueskyBot.run(
-    () => mastodonService.getPosts(20),
+    () => mastodonService.getPosts(),
     { dryRun: false },
     altCardImage
 ).catch(console.error);

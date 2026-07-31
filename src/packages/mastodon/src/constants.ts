@@ -1,3 +1,6 @@
+// Number of posts to fetch from Mastodon
+export const MAX_POSTS = 20;
+
 // Precompiled Regex Patterns for content sanitization
 export const REGEX = {
     P_TAGS: /<\/p><p>/g,
