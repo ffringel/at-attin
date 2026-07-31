@@ -14,6 +14,9 @@ export function sanitizeContent(content: string, options?: SanitizeOptions): str
         .replace(/<a href="[^"]*" class="mention"[^>]*>@([^<]+)<\/a>/g, '@$1')
         // Strip Twitter references
         .replace(REGEX.TWITTER, '')
+        // Rewrite twitter.com links to x.com (run after stripping @twitter.com
+        // mentions so only URL occurrences are affected)
+        .replace(REGEX.TWITTER_URL, 'x.com')
         // Replace account references with Bluesky handle
         .replace(opts.accountRegex, opts.blueskyHandle)
         // Strip server references

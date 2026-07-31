@@ -9,6 +9,7 @@ export const REGEX = {
     AMP: /&amp;/g,
     NBSP: /&nbsp;/g,
     TWITTER: /@twitter.com/g,
+    TWITTER_URL: /twitter\.com/g,
     HTML_TAGS: /<[^>]+>/g,
     INVALID_LINKS: /\S*(\.com|\.ca|\.org|\.net)\S*(…|\.\.\.)/g,
 } as const;
