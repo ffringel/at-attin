@@ -195,7 +195,7 @@ export class EmbedBuilder {
                              quotedStatus.url?.match(/\/(\d+)$/)?.[1];
 
             if (quotedId) {
-                const blueskyUri = this.postMapper.get(quotedId, quotedStatus.url);
+                const blueskyUri = this.postMapper.get(quotedId);
                 if (blueskyUri) {
                     return blueskyUri;
                 }

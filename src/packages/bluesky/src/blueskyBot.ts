@@ -1,33 +1,18 @@
-import { AppBskyFeedPost, AppBskyFeedGetAuthorFeed, AppBskyFeedPost as FeedPost } from '@atproto/api';
-import { XRPCError } from '@atproto/xrpc';
+import { Agent, CredentialSession } from '@atproto/api';
 import type { BotOptions, PostContent } from '@at-attin/types';
-import type { FeedViewPost } from '@atproto/api/dist/client/types/app/bsky/feed/defs.js';
-import { SessionManager } from './sessionManager.js';
-import { ThreadManager } from './threadManager.js';
-import { MediaUploader } from './mediaUploader.js';
-import { EmbedBuilder } from './embedBuilder.js';
-import { PostBuilder } from './postBuilder.js';
-import { PostMapper } from './postMapper.js';
+import { PostService } from './postService.js';
 
 /**
- * BlueskyBot - Main bot class for posting to Bluesky
+ * BlueskyBot - Main entry point for posting to Bluesky
  *
- * Composes multiple specialized modules:
- * - SessionManager: Authentication and session management
- * - ThreadManager: Reply thread handling
- * - MediaUploader: Media upload with retry logic
- * - EmbedBuilder: Build embed structures
- * - PostBuilder: Post record validation
+ * Simple API:
+ * 1. Call BlueskyBot.run() with a post fetcher function
+ * 2. Posts are automatically processed (threads, quotes, media)
  */
 export class BlueskyBot {
-    private readonly sessionManager: SessionManager;
-    private readonly threadManager: ThreadManager;
-    private readonly mediaUploader: MediaUploader;
-    private readonly embedBuilder: EmbedBuilder;
-    private readonly postBuilder: PostBuilder;
-    private readonly postMapper: PostMapper;
-    private readonly dryRun: boolean;
-    private feed?: AppBskyFeedGetAuthorFeed.Response;
+    private readonly sessionManager: CredentialSession;
+    private readonly agent: Agent;
+    private readonly postService: PostService;
 
     static defaultOptions: BotOptions = {
         service: 'https://bsky.social',
@@ -38,28 +23,26 @@ export class BlueskyBot {
         options?: Partial<BotOptions>,
         altCardImage?: string
     ) {
-        const { service, dryRun } = Object.assign({}, BlueskyBot.defaultOptions, options);
+        const { service } = Object.assign({}, BlueskyBot.defaultOptions, options);
 
-        // Initialize session manager
-        this.sessionManager = new SessionManager(new URL(service.toString()));
-        this.dryRun = dryRun;
-
-        // Initialize sub-modules (postMapper first for dependency order)
-        this.postMapper = new PostMapper();
-        this.threadManager = new ThreadManager();
-        this.mediaUploader = new MediaUploader(this.sessionManager.getAgent(), altCardImage);
-        this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.postMapper, this.sessionManager.getAgent());
-        this.postBuilder = new PostBuilder(this.sessionManager.getAgent());
+        this.sessionManager = new CredentialSession(new URL(service.toString()));
+        this.agent = new Agent(this.sessionManager);
+        this.postService = new PostService(this.agent, altCardImage);
     }
 
     /**
      * Login to Bluesky
      */
-    async login(): Promise<void> {
-        await this.sessionManager.login({
-            identifier: process.env.BSKY_HANDLE!,
-            password: process.env.BSKY_PASSWORD!,
-        });
+    async login(identifier: string, password: string): Promise<void> {
+        await this.sessionManager.login({ identifier, password });
+        await this.postService.loadFeed();
+    }
+
+    /**
+     * Post a single piece of content
+     */
+    async postContent(post: PostContent): Promise<void> {
+        await this.postService.processPost(post);
     }
 
     /**
@@ -73,213 +56,19 @@ export class BlueskyBot {
         const bot = new BlueskyBot(options, altCardImage);
 
         try {
-            await bot.login();
-            await bot.recentFeed();
+            await bot.login(
+                process.env.BSKY_HANDLE!,
+                process.env.BSKY_PASSWORD!
+            );
+
             const posts = await getPosts();
 
             for (const post of posts) {
-                if (post.content.length <= 300) {
-                    await bot.handleShortPost(post);
-                } else {
-                    await bot.handleLongPost(post);
-                }
+                await bot.postContent(post);
             }
         } catch (error) {
             console.error('Error in bot execution:', (error as Error).message);
             process.exit(1);
-        }
-    }
-
-    /**
-     * Fetch recent feed for duplicate detection
-     */
-    private async recentFeed(): Promise<void> {
-        try {
-            const did = this.sessionManager.getDid() || '';
-            this.feed = await this.sessionManager.getAgent().app.bsky.feed.getAuthorFeed({
-                actor: did,
-                limit: 20,
-            });
-        } catch (error) {
-            if (error instanceof XRPCError) {
-                console.error('Failed to fetch feed:', error.status, error.error);
-            }
-            throw error;
-        }
-    }
-
-    /**
-     * Check if a post is a duplicate
-     * Returns true only if the exact same text was already posted
-     */
-    private async isDuplicatePost(post: PostContent): Promise<boolean> {
-        const text = post.content.trim();
-
-        if (!this.feed?.data?.feed) return false;
-
-        // Check for exact text match in our feed
-        // This works for both regular posts and thread chunks
-        return this.feed.data.feed.some((postView: FeedViewPost) => {
-            const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
-            const currentText = currentRecord?.text?.trim();
-
-            return currentText === text;
-        });
-    }
-
-    /**
-     * Post content to Bluesky
-     */
-    async postContent(post: PostContent, isReply = false): Promise<void> {
-        // Check for duplicates
-        if (await this.isDuplicatePost(post)) {
-            console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
-            return;
-        }
-
-        try {
-            // Build embed structure
-            const embed = await this.embedBuilder.build(post);
-
-            // Get reply reference if this is a reply
-            const replyRef = isReply ? this.getReplyRefFromThread() : undefined;
-
-            // Build and validate post record
-            const { record } = await this.postBuilder.build(post, embed, replyRef);
-
-            if (this.dryRun) {
-                console.log('Dry run - would post:', JSON.stringify(record, null, 2));
-                return;
-            }
-
-            // Post with error handling
-            try {
-                const response = await this.sessionManager.getAgent().post(record);
-                this.threadManager.updateReplyRefs(response);
-
-                // Store mapping for Mastodon post ID
-                const mastodonId = this.extractMastodonId(post);
-                if (mastodonId) {
-                    this.postMapper.set(mastodonId, '', response.uri);
-                }
-
-                // Store mapping for quoted status ID - prefer Mastodon post ID if available
-                if (post.quotedStatus) {
-                    const quotedId = post.quotedStatus.mastodonId ||
-                                     post.quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
-                                     post.quotedStatus.url?.match(/\/(\d+)$/)?.[1];
-                    if (quotedId) {
-                        this.postMapper.set(quotedId, post.quotedStatus.url, response.uri);
-                    }
-                }
-
-                // Store mapping for cross-post ID (from Mastodon content)
-                if (post.crossPostId) {
-                    this.postMapper.set(post.crossPostId, '', response.uri);
-                }
-
-                console.log('Posted successfully:', record.text);
-            } catch (error) {
-                await this.handlePostError(error as XRPCError, post, isReply);
-            }
-
-        } catch (error) {
-            if (error instanceof XRPCError) {
-                console.error('XRPC Error posting content:', error.status, error.error);
-            } else {
-                console.error('Error posting content:', (error as Error).message);
-            }
-            throw error;
-        }
-    }
-
-    /**
-     * Get reply ref from thread manager in AT Protocol format
-     */
-    private getReplyRefFromThread(): FeedPost.ReplyRef | undefined {
-        const ref = this.threadManager.getReplyRef();
-        if (!ref) return undefined;
-        return {
-            root: { uri: ref.root.uri, cid: ref.root.cid },
-            parent: { uri: ref.parent.uri, cid: ref.parent.cid },
-        };
-    }
-
-    /**
-     * Extract Mastodon post ID from post content
-     */
-    private extractMastodonId(post: PostContent): string | undefined {
-        if (post.mastodonId) {
-            return post.mastodonId;
-        }
-        if (post.quotedStatus?.url) {
-            const match = post.quotedStatus.url.match(/(\d+)$/);
-            if (match) return match[1];
-        }
-        return undefined;
-    }
-
-    /**
-     * Handle post errors with appropriate recovery
-     */
-    private async handlePostError(
-        error: XRPCError,
-        post: PostContent,
-        isReply: boolean
-    ): Promise<void> {
-        switch (error.status) {
-            case 429: {
-                const retryAfter = error.headers?.['ratelimit-reset']
-                    ? parseInt(error.headers['ratelimit-reset'], 10) * 1000
-                    : 60000;
-                console.warn(`Rate limited. Retrying after ${retryAfter}ms`);
-                await this.sleep(retryAfter);
-                return this.postContent(post, isReply);
-            }
-            case 401: {
-                console.error('Authentication expired, attempting re-login');
-                await this.login();
-                return this.postContent(post, isReply);
-            }
-            case 400: {
-                console.error('Validation error:', error.error, error.message);
-                throw error;
-            }
-            case 413: {
-                console.error('Media too large:', error.message);
-                throw error;
-            }
-            default: {
-                console.error(`XRPC Error ${error.status}:`, error.error, error.message);
-                throw error;
-            }
-        }
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * Handle short posts (under character limit)
-     */
-    private async handleShortPost(post: PostContent): Promise<void> {
-        await this.postContent(post);
-    }
-
-    /**
-     * Handle long posts by splitting into threaded chunks
-     */
-    private async handleLongPost(post: PostContent): Promise<void> {
-        const chunks = this.threadManager.splitLongPost(post.content);
-        this.threadManager.resetReplyRefs();
-
-        for (const [i, chunk] of chunks.entries()) {
-            const updatedPost = i === 0
-                ? { ...post, content: chunk }
-                : { created_at: post.created_at, content: chunk };
-
-            await this.postContent(updatedPost, i > 0);
         }
     }
 }
