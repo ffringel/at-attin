@@ -1,12 +1,11 @@
-import { AppBskyFeedPost, AppBskyFeedGetAuthorFeed, Agent } from '@atproto/api';
+import { AppBskyFeedPost, Agent } from '@atproto/api';
 import { XRPCError } from '@atproto/xrpc';
 import type { PostContent } from '@at-attin/types';
-import type { FeedViewPost } from '@atproto/api/dist/client/types/app/bsky/feed/defs.js';
 import { ThreadManager } from './threadManager.js';
 import { MediaUploader } from '../media/mediaUploader.js';
 import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
-import { PostMapper } from './postMapper.js';
+import { PostRegistry } from './postRegistry.js';
 import { splitLongPost } from '../utils/postSplitter.js';
 import {MAX_POST_LENGTH} from "../config/constants.js";
 
@@ -18,7 +17,7 @@ const MAX_POSTS = 100;
 
 /**
  * Handles all Bluesky posting operations including:
- * - Duplicate detection
+ * - Duplicate detection (delegated to PostRegistry)
  * - Embed building
  * - Post validation and submission
  * - Error handling with retry logic
@@ -30,18 +29,15 @@ export class PostService {
     private readonly mediaUploader: MediaUploader;
     private readonly embedBuilder: EmbedBuilder;
     private readonly postBuilder: PostBuilder;
-    private readonly postMapper: PostMapper;
+    private readonly registry: PostRegistry;
     private readonly dryRun: boolean;
-    private feed?: AppBskyFeedGetAuthorFeed.Response;
-    // Track Mastodon post IDs that have been posted
-    private readonly postedIds = new Set<string>();
 
     constructor(agent: Agent, altCardImage?: string, dryRun = false) {
         this.agent = agent;
-        this.postMapper = new PostMapper();
+        this.registry = new PostRegistry();
         this.threadManager = new ThreadManager();
         this.mediaUploader = new MediaUploader(agent, altCardImage);
-        this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.postMapper, agent);
+        this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.registry, agent);
         this.postBuilder = new PostBuilder(agent);
         this.dryRun = dryRun;
     }
@@ -51,125 +47,11 @@ export class PostService {
      */
     async loadFeed(): Promise<void> {
         const did = (this.agent as any).session?.did || this.agent.did || '';
-        this.feed = await this.agent.app.bsky.feed.getAuthorFeed({
+        const feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: did,
             limit: MAX_POSTS,
         });
-    }
-
-    /**
-     * Check if a post is a duplicate
-     * Uses Mastodon post ID for reliable matching
-     */
-    private isDuplicate(post: PostContent): boolean {
-        // Check by Mastodon ID (most reliable) - already posted this run
-        if (post.mastodonId && this.postedIds.has(post.mastodonId)) {
-            return true;
-        }
-
-        // Also check the feed from previous runs
-        return !!this.findDuplicateInFeed(post);
-    }
-
-    /**
-     * Find an existing Bluesky post in the loaded author feed that mirrors
-     * the given Mastodon post. Returns the matching feed entry (with its
-     * Bluesky URI/CID) so the mapping can be re-established for quote posts,
-     * or undefined if no match is found.
-     *
-     * For long posts (mirrored as a multi-post Bluesky thread) every chunk's
-     * prefix is checked. The thread starter ([1/2]) can be missing from the
-     * author feed — a Bluesky indexing quirk when a post and its reply are
-     * created in the same second — while later chunk replies are present, so
-     * matching any chunk detects an already-mirrored thread.
-     */
-    private findDuplicateInFeed(post: PostContent): FeedViewPost | undefined {
-        if (!this.feed?.data?.feed) return undefined;
-
-        // For thread chunks, compare without the [x/y] suffix
-        const threadPattern = /\s*\[\d+\/\d+\]$/;
-        const contents = post.content.length > 300
-            ? splitLongPost(post.content)
-            : [post.content];
-        const prefixes = contents
-            .map(c => c.replace(threadPattern, '').trim().substring(0, 50))
-            .filter(p => p.length > 0);
-
-        return this.feed.data.feed.find((postView: FeedViewPost) => {
-            const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
-            if (!currentRecord) return false;
-
-            const currentText = (currentRecord.text?.trim() || '').replace(threadPattern, '').trim();
-
-            // Only match when we have a Mastodon ID; compare normalized text
-            // prefixes to tolerate thread-chunk suffixes and minor differences.
-            if (post.mastodonId && currentText.length > 20) {
-                return prefixes.some(p => currentText.substring(0, 50) === p);
-            }
-
-            return false;
-        });
-    }
-
-    /**
-     * Extract Mastodon post ID from post content
-     */
-    private extractMastodonId(post: PostContent): string | undefined {
-        if (post.mastodonId) {
-            return post.mastodonId;
-        }
-        if (post.quotedStatus?.url) {
-            const match = post.quotedStatus.url.match(/(\d+)$/);
-            if (match) return match[1];
-        }
-        return undefined;
-    }
-
-    /**
-     * Store mappings for quote post support and duplicate detection
-     */
-    private storeMappings(post: PostContent, response: { uri: string; cid: string }): void {
-        // Track Mastodon post ID to prevent duplicates
-        const mastodonId = this.extractMastodonId(post);
-        if (mastodonId) {
-            this.postedIds.add(mastodonId);
-            this.postMapper.set(mastodonId, '', response.uri);
-        }
-
-        // Store mapping for quoted status ID
-        if (post.quotedStatus) {
-            const quotedId = post.quotedStatus.mastodonId ||
-                             post.quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
-                             post.quotedStatus.url?.match(/\/(\d+)$/)?.[1];
-            if (quotedId) {
-                this.postMapper.set(quotedId, '', response.uri);
-            }
-        }
-
-        // Store mapping for cross-post ID
-        if (post.crossPostId) {
-            this.postMapper.set(post.crossPostId, '', response.uri);
-        }
-    }
-
-    /**
-     * Re-establish URI mappings for a post that was already mirrored in a
-     * previous run (detected as a duplicate in the author feed). This lets
-     * later quote posts that reference it resolve to a real Bluesky quote
-     * embed, since the in-memory PostMapper starts empty each run.
-     *
-     * Unlike storeMappings, this only maps the post's own IDs (Mastodon ID
-     * and cross-post ID) - not any quotedStatus - because the quoted status
-     * belongs to a different post.
-     */
-    private storeDuplicateMappings(post: PostContent, uri: string): void {
-        if (post.mastodonId) {
-            this.postedIds.add(post.mastodonId);
-            this.postMapper.set(post.mastodonId, '', uri);
-        }
-        if (post.crossPostId) {
-            this.postMapper.set(post.crossPostId, '', uri);
-        }
+        this.registry.setFeed(feed);
     }
 
     /**
@@ -270,7 +152,7 @@ export class PostService {
         try {
             const response = await this.agent.post(record);
             this.threadManager.updateReplyRefs(response);
-            this.storeMappings(post, response);
+            this.registry.storeMappings(post, response);
             console.log('Posted successfully:', record.text);
         } catch (error) {
             await this.handlePostError(error, post, isReply);
@@ -312,15 +194,15 @@ export class PostService {
      * got re-posted on every run.
      */
     async processPost(post: PostContent): Promise<void> {
-        if (this.isDuplicate(post)) {
+        if (this.registry.isDuplicate(post)) {
             console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
 
             // Re-establish the URI mapping for this already-mirrored post so
             // that later quote posts referencing it can resolve to a Bluesky
-            // quote embed. The PostMapper is in-memory and starts empty each
-            // run, so without this a quote of a previously-mirrored post would
-            // fall back to a plain link instead of a true quote embed.
-            const existing = this.findDuplicateInFeed(post);
+            // quote embed. The registry's map is in-memory and starts empty
+            // each run, so without this a quote of a previously-mirrored post
+            // would fall back to a plain link instead of a true quote embed.
+            const existing = this.registry.findDuplicateInFeed(post);
             if (existing) {
                 // If the match is a thread reply (e.g. we matched the [2/2]
                 // chunk because the [1/2] starter is missing from the feed),
@@ -328,7 +210,7 @@ export class PostService {
                 // reference the root post rather than the last chunk.
                 const record = existing.post.record as AppBskyFeedPost.Record | undefined;
                 const rootUri = record?.reply?.root?.uri ?? existing.post.uri;
-                this.storeDuplicateMappings(post, rootUri);
+                this.registry.storeDuplicateMappings(post, rootUri);
             }
 
             return;

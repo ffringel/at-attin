@@ -9,7 +9,7 @@ import {
 import type { PostContent, Image as PostImage } from '@at-attin/types';
 import { MAX_IMAGES_PER_POST } from '../config/constants.js';
 import { MediaUploader } from '../media/mediaUploader.js';
-import { PostMapper } from '../services/postMapper.js';
+import { PostRegistry } from '../services/postRegistry.js';
 
 /**
  * Union type for all embed types including quote posts
@@ -26,12 +26,12 @@ export type Embed =
  */
 export class EmbedBuilder {
     private readonly mediaUploader: MediaUploader;
-    private readonly postMapper?: PostMapper;
+    private readonly registry?: PostRegistry;
     private readonly agent?: Agent;
 
-    constructor(mediaUploader: MediaUploader, postMapper?: PostMapper, agent?: Agent) {
+    constructor(mediaUploader: MediaUploader, registry?: PostRegistry, agent?: Agent) {
         this.mediaUploader = mediaUploader;
-        this.postMapper = postMapper;
+        this.registry = registry;
         this.agent = agent;
     }
 
@@ -183,7 +183,7 @@ export class EmbedBuilder {
 
     /**
      * Get Bluesky AT URI for a quoted Mastodon status
-     * Uses the PostMapper to find previously mirrored posts
+     * Uses the PostRegistry to find previously mirrored posts
      * Priority: 1) mastodonId field, 2) extract from URL
      */
     private getBlueskyUriForQuotedStatus(quotedStatus: NonNullable<PostContent['quotedStatus']>): string | undefined {
@@ -192,15 +192,15 @@ export class EmbedBuilder {
             return quotedStatus.uri;
         }
 
-        // Try to find in our post mapper
-        if (this.postMapper) {
+        // Try to find in our post registry
+        if (this.registry) {
             // Use mastodonId if available, otherwise extract from URL
             const quotedId = quotedStatus.mastodonId ||
                              quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
                              quotedStatus.url?.match(/\/(\d+)$/)?.[1];
 
             if (quotedId) {
-                const blueskyUri = this.postMapper.get(quotedId);
+                const blueskyUri = this.registry.getUri(quotedId);
                 if (blueskyUri) {
                     return blueskyUri;
                 }
