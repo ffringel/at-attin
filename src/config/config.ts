@@ -9,7 +9,8 @@ const envSchema = z.object({
     MASTODON_API: z.string().nonempty().default("https://mastodon.social/api/v1/"),
     MASTODON_HANDLE: z.string().nonempty(),
     MASTODON_ACCOUNT_ID: z.string().nonempty(),
-    ALT_CARD_IMG: z.string().nonempty(),      
+    MASTODON_ACCESS_TOKEN: z.string().optional().default(""),
+    ALT_CARD_IMG: z.string().nonempty(),
     GIVEAWAYS: z.string().nonempty().default("retweet"),
 });
 
@@ -27,5 +28,7 @@ export const bskyAccount: AtpAgentLoginOpts = {
 export const mastodonApi = parsedSchema.MASTODON_API;
 export const sourceAccount = parsedSchema.MASTODON_HANDLE;
 export const sourceAccountId = parsedSchema.MASTODON_ACCOUNT_ID;
+// Export access_token for Mastodon API auth - defaults to empty string (env var MASTODON_ACCESS_TOKEN)
+export const access_token = parsedSchema.MASTODON_ACCESS_TOKEN || "";
 export const giveaways = parsedSchema.GIVEAWAYS.split(",");
 export const altCardImage = parsedSchema.ALT_CARD_IMG;

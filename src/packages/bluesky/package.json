@@ -1,0 +1,26 @@
+{
+  "name": "@at-attin/bluesky",
+  "version": "1.0.0",
+  "description": "Bluesky bot for posting content via AT Protocol",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/"
+  },
+  "keywords": ["bluesky", "bsky", "atproto", "social"],
+  "author": {
+    "name": "Blaise Kpwe",
+    "email": "blaisekpwe@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@at-attin/types": "^1.0.0",
+    "@atproto/api": "^0.13.35",
+    "@atproto/xrpc": "^0.6.5",
+    "axios": "^1.15.2"
+  }
+}
