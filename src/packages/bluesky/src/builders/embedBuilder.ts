@@ -4,12 +4,11 @@ import {
     AppBskyEmbedExternal,
     AppBskyEmbedRecord,
     BlobRef,
-    Agent,
 } from '@atproto/api';
 import type { PostContent, Image as PostImage } from '@at-attin/types';
 import { MAX_IMAGES_PER_POST } from '../config/constants.js';
 import { MediaUploader } from '../media/mediaUploader.js';
-import { PostRegistry } from '../services/postRegistry.js';
+import { QuoteResolver } from '../services/quoteResolver.js';
 
 /**
  * Union type for all embed types including quote posts
@@ -26,13 +25,11 @@ export type Embed =
  */
 export class EmbedBuilder {
     private readonly mediaUploader: MediaUploader;
-    private readonly registry?: PostRegistry;
-    private readonly agent?: Agent;
+    private readonly quoteResolver?: QuoteResolver;
 
-    constructor(mediaUploader: MediaUploader, registry?: PostRegistry, agent?: Agent) {
+    constructor(mediaUploader: MediaUploader, quoteResolver?: QuoteResolver) {
         this.mediaUploader = mediaUploader;
-        this.registry = registry;
-        this.agent = agent;
+        this.quoteResolver = quoteResolver;
     }
 
     /**
@@ -140,74 +137,26 @@ export class EmbedBuilder {
     }
 
     /**
-     * Build a quote post embed (app.bsky.embed.record)
-     * Looks up the Bluesky AT URI for the quoted Mastodon post
-     * and fetches the actual CID
+     * Build a quote post embed (app.bsky.embed.record).
+     * Delegates URI + CID resolution to QuoteResolver; this method is purely
+     * construction once a {uri, cid} is resolved.
      */
     private async buildQuoteEmbed(quotedStatus: NonNullable<PostContent['quotedStatus']>): Promise<AppBskyEmbedRecord.Main | undefined> {
-        // Try to find the Bluesky AT URI from our post mapper
-        const recordUri = this.getBlueskyUriForQuotedStatus(quotedStatus);
-
-        // Skip quote embed if we don't have a valid AT URI
-        if (!recordUri) {
+        if (!this.quoteResolver) {
             return undefined;
         }
 
-        // Fetch the post to get the actual CID
-        let cid: string | undefined;
-        if (this.agent) {
-            try {
-                // Use getPosts to fetch the post with its CID
-                const result = await this.agent.app.bsky.feed.getPosts({ uris: [recordUri] });
-                if (result.data.posts && result.data.posts.length > 0) {
-                    cid = result.data.posts[0].cid;
-                }
-            } catch (err) {
-                console.warn(`Failed to fetch post for CID: ${err}`);
-            }
-        }
-
-        // Skip quote embed if we couldn't get a valid CID
-        if (!cid) {
+        const resolved = await this.quoteResolver.resolve(quotedStatus);
+        if (!resolved) {
             return undefined;
         }
 
         return {
             $type: 'app.bsky.embed.record',
             record: {
-                uri: recordUri,
-                cid: cid,
+                uri: resolved.uri,
+                cid: resolved.cid,
             },
         };
-    }
-
-    /**
-     * Get Bluesky AT URI for a quoted Mastodon status
-     * Uses the PostRegistry to find previously mirrored posts
-     * Priority: 1) mastodonId field, 2) extract from URL
-     */
-    private getBlueskyUriForQuotedStatus(quotedStatus: NonNullable<PostContent['quotedStatus']>): string | undefined {
-        // First check if the URI is already an AT URI (for Bluesky-to-Bluesky quotes)
-        if (quotedStatus.uri?.startsWith('at://')) {
-            return quotedStatus.uri;
-        }
-
-        // Try to find in our post registry
-        if (this.registry) {
-            // Use mastodonId if available, otherwise extract from URL
-            const quotedId = quotedStatus.mastodonId ||
-                             quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
-                             quotedStatus.url?.match(/\/(\d+)$/)?.[1];
-
-            if (quotedId) {
-                const blueskyUri = this.registry.getUri(quotedId);
-                if (blueskyUri) {
-                    return blueskyUri;
-                }
-            }
-        }
-
-        // No valid AT URI found - quote embed not possible
-        return undefined;
     }
 }

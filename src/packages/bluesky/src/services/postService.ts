@@ -6,6 +6,7 @@ import { MediaUploader } from '../media/mediaUploader.js';
 import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostRegistry } from './postRegistry.js';
+import { QuoteResolver } from './quoteResolver.js';
 import { splitLongPost } from '../utils/postSplitter.js';
 import {MAX_POST_LENGTH} from "../config/constants.js";
 
@@ -37,7 +38,7 @@ export class PostService {
         this.registry = new PostRegistry();
         this.threadManager = new ThreadManager();
         this.mediaUploader = new MediaUploader(agent, altCardImage);
-        this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.registry, agent);
+        this.embedBuilder = new EmbedBuilder(this.mediaUploader, new QuoteResolver(agent, this.registry));
         this.postBuilder = new PostBuilder(agent);
         this.dryRun = dryRun;
     }
