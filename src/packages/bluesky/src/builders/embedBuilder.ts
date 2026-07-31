@@ -7,9 +7,9 @@ import {
     Agent,
 } from '@atproto/api';
 import type { PostContent, Image as PostImage } from '@at-attin/types';
-import { MAX_IMAGES_PER_POST } from './constants.js';
-import { MediaUploader } from './mediaUploader.js';
-import { PostMapper } from './postMapper.js';
+import { MAX_IMAGES_PER_POST } from '../config/constants.js';
+import { MediaUploader } from '../media/mediaUploader.js';
+import { PostMapper } from '../services/postMapper.js';
 
 /**
  * Union type for all embed types including quote posts

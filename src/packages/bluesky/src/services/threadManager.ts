@@ -1,4 +1,4 @@
-import { MAX_POST_LENGTH, CHUNK_BUFFER } from './constants.js';
+import { MAX_POST_LENGTH, CHUNK_BUFFER } from '../config/constants.js';
 
 /**
  * Reply reference structure for thread creation

@@ -3,11 +3,11 @@ import { XRPCError } from '@atproto/xrpc';
 import type { PostContent } from '@at-attin/types';
 import type { FeedViewPost } from '@atproto/api/dist/client/types/app/bsky/feed/defs.js';
 import { ThreadManager } from './threadManager.js';
-import { MediaUploader } from './mediaUploader.js';
-import { EmbedBuilder } from './embedBuilder.js';
-import { PostBuilder } from './postBuilder.js';
+import { MediaUploader } from '../media/mediaUploader.js';
+import { EmbedBuilder } from '../builders/embedBuilder.js';
+import { PostBuilder } from '../builders/postBuilder.js';
 import { PostMapper } from './postMapper.js';
-import {MAX_POST_LENGTH} from "./constants.js";
+import {MAX_POST_LENGTH} from "../config/constants.js";
 
 // Number of recent author-feed posts to fetch for duplicate detection.
 // Kept larger than a single run's post volume so previously-mirrored posts

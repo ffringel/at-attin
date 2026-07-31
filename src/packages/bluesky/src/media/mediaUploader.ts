@@ -8,7 +8,7 @@ import {
     MAX_RETRIES,
     BASE_RETRY_DELAY,
     MAX_RETRY_DELAY,
-} from './constants.js';
+} from '../config/constants.js';
 
 /**
  * Handles media uploads to Bluesky with proper mime type detection

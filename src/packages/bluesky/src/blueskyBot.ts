@@ -1,6 +1,6 @@
 import { Agent, CredentialSession } from '@atproto/api';
 import type { BotOptions, PostContent } from '@at-attin/types';
-import { PostService } from './postService.js';
+import { PostService } from './services/postService.js';
 
 /**
  * BlueskyBot - Main entry point for posting to Bluesky
