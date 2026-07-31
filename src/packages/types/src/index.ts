@@ -1,5 +1,3 @@
-import { BlobRef } from "@atproto/api";
-
 export interface BotOptions {
     service: string | URL;
     dryRun: boolean;
@@ -7,10 +5,16 @@ export interface BotOptions {
 
 /**
  * Quoted status from Mastodon (for quote posts)
+ *
+ * `uri`/`url` are optional: the mastodon producer emits the raw `quoted.uri` /
+ * `quoted.url` (which may be absent or null) rather than coercing absent
+ * values to ''. Downstream consumers treat both '' and undefined as "no value"
+ * (via `?.` chains and truthy guards), so this is a precision change with no
+ * behavior difference.
  */
 export interface QuotedStatus {
-    uri: string;
-    url: string;
+    uri?: string;
+    url?: string;
     content: string;
     account: QuotedStatusAccount;
     mastodonId?: string;  // The Mastodon post ID for mapping to Bluesky
@@ -60,14 +64,19 @@ export interface VideoMetadata {
     preview_url?: string;
 }
 
+/**
+ * Link card attached to a post.
+ *
+ * `uri`/`title`/`description` are required: the mastodon producer
+ * (`processCard`) returns `undefined` when there's no URL, and otherwise
+ * always sets all three (coercing empty to ''). Only `image` is genuinely
+ * optional. This lets `embedBuilder.buildExternalEmbed` drop its `card.uri!`
+ * non-null assertion — the type now carries the guard the caller already
+ * performs.
+ */
 export interface Card {
-    uri?: string;
-    title?: string;
-    description?: string;
+    uri: string;
+    title: string;
+    description: string;
     image?: string;
-}
-
-export interface MediaUpload {
-    blob: BlobRef;
-    alt: string;
 }

@@ -1,10 +1,9 @@
 import type { PostContent } from '@at-attin/types';
-import type { JSON as MastodonJSON } from 'tsl-mastodon-api';
-import { MastodonClient } from './apiClient.js';
-import { handleMastodonError } from './errorHandling.js';
-import { sanitizeContent } from './contentSanitizer.js';
-import { processImages, processVideo, processCard } from './mediaProcessor.js';
-import { MAX_POSTS } from './constants.js';
+import * as Mastodon from 'tsl-mastodon-api';
+import { MastodonAPIError } from '../utils/errorHandling.js';
+import { Sanitizer } from '../utils/contentSanitizer.js';
+import { processImages, processVideo, processCard } from '../utils/mediaProcessor.js';
+import { MAX_POSTS } from '../config/constants.js';
 
 /**
  * Mastodon Quote type (v4.5+)
@@ -12,16 +11,31 @@ import { MAX_POSTS } from './constants.js';
  */
 interface MastodonQuote {
     state: 'pending' | 'accepted' | 'rejected' | 'revoked' | 'deleted' | 'unauthorized' | 'blocked_account' | 'blocked_domain' | 'muted_account';
-    quoted_status?: MastodonJSON.Status;
+    quoted_status?: Mastodon.JSON.Status;
 }
+
+/**
+ * A Mastodon status with the v4.5+ `quote` field, which tsl-mastodon-api's
+ * `JSON.Status` doesn't yet type. Modeled as a local intersection so we avoid
+ * global declaration-merging (which would couple us to the library's type
+ * surface and conflict if upstream ever ships its own `quote`). The cast is
+ * applied once at the fetch boundary; downstream code sees a typed `quote`.
+ */
+type MastodonStatus = Mastodon.JSON.Status & { quote?: MastodonQuote };
 
 /**
  * Configuration for Mastodon service
  */
 export interface MastodonServiceConfig {
-    accessToken: string;
+    /** Optional access token — public timelines (e.g. mastodon.social) need
+     *  no auth; passed to the library as `accessToken ?? ''`. */
+    accessToken?: string;
     apiUrl: string;
+    /** Numeric Mastodon account ID — used for API calls and own-quote detection. */
     sourceAccountId: string;
+    /** Source Mastodon handle in "@user@domain" form — used to build the
+     *  sanitizer's account/server regexes (NOT the numeric ID). */
+    sourceAccount: string;
     blueskyHandle: string;
     giveaways?: string[];
 }
@@ -30,14 +44,20 @@ export interface MastodonServiceConfig {
  * Fetch and process Mastodon posts for Bluesky mirroring
  */
 export default class MastodonService {
-    private readonly client: MastodonClient;
+    private readonly api: Mastodon.API;
     private readonly config: MastodonServiceConfig;
+    private readonly sanitizer: Sanitizer;
 
     constructor(config: MastodonServiceConfig) {
         this.config = config;
-        this.client = new MastodonClient({
-            accessToken: config.accessToken,
-            apiUrl: config.apiUrl,
+        this.api = new Mastodon.API({
+            access_token: config.accessToken ?? '',
+            api_url: config.apiUrl,
+        });
+        this.sanitizer = new Sanitizer({
+            blueskyHandle: config.blueskyHandle,
+            sourceAccount: config.sourceAccount,
+            giveaways: config.giveaways,
         });
     }
 
@@ -47,27 +67,57 @@ export default class MastodonService {
      * @returns Processed posts ready for Bluesky
      */
     async getPosts(limit: number = MAX_POSTS): Promise<PostContent[]> {
-        try {
-            const statuses = await this.client.getStatuses(
-                this.config.sourceAccountId,
-                limit
-            );
+        const statuses = await this.fetchStatuses(limit);
+        return this.processPosts(statuses);
+    }
 
-            return this.processPosts(statuses);
+    /**
+     * Fetch recent statuses for the source account.
+     *
+     * The tsl-mastodon-api client self-paces via its internal nextDelay (reset
+     * from X-RateLimit-* headers after each request), and we make exactly one
+     * request per run, so no manual delay or rate-limit logging is needed here.
+     */
+    private async fetchStatuses(limit: number): Promise<MastodonStatus[]> {
+        try {
+            const response = await this.api.getStatuses(
+                this.config.sourceAccountId,
+                { limit }
+            );
+            // Cast once at the fetch boundary: the library's JSON.Status
+            // doesn't type the v4.5+ `quote` field (see MastodonStatus above).
+            return response.json as MastodonStatus[];
         } catch (error) {
-            handleMastodonError(error, 'Failed to fetch Mastodon posts');
-            throw error;
+            // tsl-mastodon-api throws the raw API.Result object — a plain
+            // object with .status/.json, NOT an Error — on any non-200
+            // response, so without wrapping it the top-level catch (which logs
+            // error.message) would print "undefined". Wrap it so a real Error
+            // with a useful message propagates to that single log site.
+            // Mastodon's human-readable detail lives in result.json.error;
+            // result.error is a placeholder Error with an empty message except
+            // on transport faults.
+            const status = (error as { status?: number })?.status;
+            const json = (error as { json?: { error?: string } })?.json;
+            const inner = (error as { error?: Error })?.error;
+            const detail =
+                json?.error ??
+                (inner instanceof Error && inner.message ? inner.message : null) ??
+                'Unknown error';
+            throw new MastodonAPIError(
+                `Mastodon API returned error: ${detail} (Status: ${status})`,
+                status
+            );
         }
     }
 
     /**
      * Process array of Mastodon statuses into PostContent
      */
-    private processPosts(statuses: MastodonJSON.Status[]): PostContent[] {
+    private processPosts(statuses: MastodonStatus[]): PostContent[] {
         return statuses
             .filter((post) => !post.reblog)
             .map(post => {
-                const quotedStatus = processQuotedStatus((post as any).quote ?? null);
+                const quotedStatus = processQuotedStatus(post.quote ?? null, this.sanitizer);
 
                 // Extract status ID from cross-posted social URLs (Twitter, sportsbots.xyz, etc.)
                 // These are used to map Mastodon posts to Bluesky posts for quote functionality
@@ -104,15 +154,7 @@ export default class MastodonService {
 
                 const result: PostContent = {
                     created_at: post.created_at,
-                    content: sanitizeContent(content, {
-                        blueskyHandle: this.config.blueskyHandle,
-                        accountRegex: new RegExp(this.config.sourceAccountId, 'g'),
-                        serverRegex: new RegExp(
-                            '@' + this.config.sourceAccountId.split('@')[2],
-                            'g'
-                        ),
-                        giveaways: this.config.giveaways,
-                    }),
+                    content: this.sanitizer.sanitize(content),
                     images: processImages(post.media_attachments),
                     video: processVideo(post.media_attachments),
                     card: processCard(post.card ?? undefined),
@@ -129,24 +171,13 @@ export default class MastodonService {
             });
     }
 
-    /**
-     * Get the Mastodon post ID from a URL
-     * Handles various formats:
-     * - https://mastodon.social/@user/123456 -> 123456
-     * - https://sportsbots.xyz/users/jeffzrebiec/statuses/123456 -> 123456
-     * - https://twitter.com/user/status/123456 -> 123456
-     */
-    static extractPostId(url: string): string | undefined {
-        const match = url.match(/\/statuses?\/(\d+)$/) || url.match(/\/(\d+)$/);
-        return match?.[1];
-    }
 }
 
 /**
  * Process quote status from Mastodon
  * Mastodon v4.5+ uses quote.quoted_status for quote posts
  */
-function processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedStatus'] {
+function processQuotedStatus(quote: MastodonQuote | null, sanitizer: Sanitizer): PostContent['quotedStatus'] {
     // Only process if quote is accepted and has a quoted status
     if (!quote || quote.state !== 'accepted' || !quote.quoted_status) {
         return undefined;
@@ -154,13 +185,13 @@ function processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedSt
 
     const quoted = quote.quoted_status;
     return {
-        uri: quoted.uri ?? '',
-        url: quoted.url ?? '',
-        content: sanitizeContent(quoted.content, {
-            blueskyHandle: '',
-            accountRegex: new RegExp(''),
-            serverRegex: new RegExp(''),
-        }),
+        // uri is always a string on a Mastodon status; url is string | null |
+        // undefined. Emit the raw values (no '' coercion) — QuotedStatus now
+        // models both as optional, and downstream treats '' and undefined the
+        // same (truthy guards / ?. chains).
+        uri: quoted.uri,
+        url: quoted.url ?? undefined,
+        content: sanitizer.sanitizeQuoted(quoted.content),
         account: {
             id: quoted.account.id,
             username: quoted.account.username,
