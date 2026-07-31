@@ -6,5 +6,5 @@
  * MediaUploader, EmbedBuilder, PostBuilder) are internal implementation
  * details and are not re-exported.
  */
-export { BlueskyBot } from './blueskyBot.js';
+export { BlueskyBot } from './bot.js';
 export type { BotOptions } from '@at-attin/types';
