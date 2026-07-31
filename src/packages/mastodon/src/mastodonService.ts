@@ -129,17 +129,6 @@ export default class MastodonService {
             });
     }
 
-    /**
-     * Get the Mastodon post ID from a URL
-     * Handles various formats:
-     * - https://mastodon.social/@user/123456 -> 123456
-     * - https://sportsbots.xyz/users/jeffzrebiec/statuses/123456 -> 123456
-     * - https://twitter.com/user/status/123456 -> 123456
-     */
-    static extractPostId(url: string): string | undefined {
-        const match = url.match(/\/statuses?\/(\d+)$/) || url.match(/\/(\d+)$/);
-        return match?.[1];
-    }
 }
 
 /**

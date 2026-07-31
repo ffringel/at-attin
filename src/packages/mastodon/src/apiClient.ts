@@ -52,29 +52,4 @@ export class MastodonClient {
 
         return response.json;
     }
-
-    /**
-     * Get statuses from home timeline
-     * @param limit - Maximum number of statuses to fetch
-     * @returns Array of statuses
-     */
-    async getHomeTimeline(limit: number): Promise<Mastodon.JSON.Status[]> {
-        await this.client.delay(50);
-
-        const queryParams: Mastodon.API.QueryParams = {
-            limit,
-            exclude_replies: true,
-        };
-
-        const response = await this.client.getStatusesOfHome(queryParams);
-
-        if (response.failed) {
-            throw new MastodonAPIError(
-                `Mastodon API returned error: ${response.error || 'Unknown error'}`,
-                response.status
-            );
-        }
-
-        return response.json;
-    }
 }

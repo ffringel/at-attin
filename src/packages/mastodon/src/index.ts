@@ -7,7 +7,6 @@ export {
     isImage,
     isGIFV,
     isVideo,
-    isAudio,
     isUnknownMedia
 } from './typeGuards.js';
 export { sanitizeContent } from './contentSanitizer.js';

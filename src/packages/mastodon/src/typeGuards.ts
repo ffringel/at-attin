@@ -3,7 +3,6 @@ type MediaAttachment = MastodonJSON.MediaAttachment;
 type ImageAttachment = MastodonJSON.ImageAttachment;
 type GIFVAttachment = MastodonJSON.GIFVAttachment;
 type VideoAttachment = MastodonJSON.VideoAttachment;
-type AudioAttachment = MastodonJSON.AudioAttachment;
 type UnknownAttachment = MastodonJSON.UnknownAttachment;
 
 /**
@@ -28,13 +27,6 @@ export function isVideo(media: MediaAttachment): media is VideoAttachment {
 }
 
 /**
- * Type guard for AudioAttachment
- */
-export function isAudio(media: MediaAttachment): media is AudioAttachment {
-    return media.type === 'audio';
-}
-
-/**
  * Type guard for UnknownAttachment (unsupported media types)
  */
 export function isUnknownMedia(media: MediaAttachment): media is UnknownAttachment {
@@ -48,11 +40,4 @@ export function isProcessableAsImage(
     media: MediaAttachment
 ): media is ImageAttachment | GIFVAttachment {
     return isImage(media) || isGIFV(media);
-}
-
-/**
- * Check if media has video content (video or gifv)
- */
-export function hasVideoContent(media: MediaAttachment): boolean {
-    return isVideo(media) || isGIFV(media);
 }
