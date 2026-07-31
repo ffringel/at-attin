@@ -7,6 +7,7 @@ import { ThreadManager } from './threadManager.js';
 import { MediaUploader } from './mediaUploader.js';
 import { EmbedBuilder } from './embedBuilder.js';
 import { PostBuilder } from './postBuilder.js';
+import { PostMapper } from './postMapper.js';
 
 /**
  * BlueskyBot - Main bot class for posting to Bluesky
@@ -24,6 +25,7 @@ export class BlueskyBot {
     private readonly mediaUploader: MediaUploader;
     private readonly embedBuilder: EmbedBuilder;
     private readonly postBuilder: PostBuilder;
+    private readonly postMapper: PostMapper;
     private readonly dryRun: boolean;
     private feed?: AppBskyFeedGetAuthorFeed.Response;
 
@@ -42,10 +44,11 @@ export class BlueskyBot {
         this.sessionManager = new SessionManager(new URL(service.toString()));
         this.dryRun = dryRun;
 
-        // Initialize sub-modules
+        // Initialize sub-modules (postMapper first for dependency order)
+        this.postMapper = new PostMapper();
         this.threadManager = new ThreadManager();
         this.mediaUploader = new MediaUploader(this.sessionManager.getAgent(), altCardImage);
-        this.embedBuilder = new EmbedBuilder(this.mediaUploader);
+        this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.postMapper, this.sessionManager.getAgent());
         this.postBuilder = new PostBuilder(this.sessionManager.getAgent());
     }
 
@@ -107,27 +110,20 @@ export class BlueskyBot {
 
     /**
      * Check if a post is a duplicate
+     * Returns true only if the exact same text was already posted
      */
-    private async isDuplicatePost(post: PostContent, isReply: boolean): Promise<boolean> {
+    private async isDuplicatePost(post: PostContent): Promise<boolean> {
         const text = post.content.trim();
-        const parentUri = isReply ? this.threadManager.getReplyRef()?.parent.uri : null;
 
         if (!this.feed?.data?.feed) return false;
 
+        // Check for exact text match in our feed
+        // This works for both regular posts and thread chunks
         return this.feed.data.feed.some((postView: FeedViewPost) => {
             const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
             const currentText = currentRecord?.text?.trim();
 
-            if (currentText === text) return true;
-
-            if (isReply && parentUri) {
-                const replyParentUri = postView.reply?.parent?.uri;
-                if (replyParentUri === parentUri && currentText === text) {
-                    return true;
-                }
-            }
-
-            return false;
+            return currentText === text;
         });
     }
 
@@ -136,7 +132,7 @@ export class BlueskyBot {
      */
     async postContent(post: PostContent, isReply = false): Promise<void> {
         // Check for duplicates
-        if (await this.isDuplicatePost(post, isReply)) {
+        if (await this.isDuplicatePost(post)) {
             console.log('Skipping duplicate post:', post.content.substring(0, 50) + '...');
             return;
         }
@@ -160,6 +156,28 @@ export class BlueskyBot {
             try {
                 const response = await this.sessionManager.getAgent().post(record);
                 this.threadManager.updateReplyRefs(response);
+
+                // Store mapping for Mastodon post ID
+                const mastodonId = this.extractMastodonId(post);
+                if (mastodonId) {
+                    this.postMapper.set(mastodonId, '', response.uri);
+                }
+
+                // Store mapping for quoted status ID - prefer Mastodon post ID if available
+                if (post.quotedStatus) {
+                    const quotedId = post.quotedStatus.mastodonId ||
+                                     post.quotedStatus.url?.match(/\/statuses?\/(\d+)/)?.[1] ||
+                                     post.quotedStatus.url?.match(/\/(\d+)$/)?.[1];
+                    if (quotedId) {
+                        this.postMapper.set(quotedId, post.quotedStatus.url, response.uri);
+                    }
+                }
+
+                // Store mapping for cross-post ID (from Mastodon content)
+                if (post.crossPostId) {
+                    this.postMapper.set(post.crossPostId, '', response.uri);
+                }
+
                 console.log('Posted successfully:', record.text);
             } catch (error) {
                 await this.handlePostError(error as XRPCError, post, isReply);
@@ -185,6 +203,20 @@ export class BlueskyBot {
             root: { uri: ref.root.uri, cid: ref.root.cid },
             parent: { uri: ref.parent.uri, cid: ref.parent.cid },
         };
+    }
+
+    /**
+     * Extract Mastodon post ID from post content
+     */
+    private extractMastodonId(post: PostContent): string | undefined {
+        if (post.mastodonId) {
+            return post.mastodonId;
+        }
+        if (post.quotedStatus?.url) {
+            const match = post.quotedStatus.url.match(/(\d+)$/);
+            if (match) return match[1];
+        }
+        return undefined;
     }
 
     /**
