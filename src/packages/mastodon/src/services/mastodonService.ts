@@ -185,8 +185,12 @@ function processQuotedStatus(quote: MastodonQuote | null, sanitizer: Sanitizer):
 
     const quoted = quote.quoted_status;
     return {
-        uri: quoted.uri ?? '',
-        url: quoted.url ?? '',
+        // uri is always a string on a Mastodon status; url is string | null |
+        // undefined. Emit the raw values (no '' coercion) — QuotedStatus now
+        // models both as optional, and downstream treats '' and undefined the
+        // same (truthy guards / ?. chains).
+        uri: quoted.uri,
+        url: quoted.url ?? undefined,
         content: sanitizer.sanitizeQuoted(quoted.content),
         account: {
             id: quoted.account.id,

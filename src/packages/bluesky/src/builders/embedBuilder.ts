@@ -3,7 +3,6 @@ import {
     AppBskyEmbedVideo,
     AppBskyEmbedExternal,
     AppBskyEmbedRecord,
-    BlobRef,
 } from '@atproto/api';
 import type { PostContent, Image as PostImage } from '@at-attin/types';
 import { MAX_IMAGES_PER_POST } from '../config/constants.js';
@@ -69,7 +68,7 @@ export class EmbedBuilder {
 
         return {
             $type: 'app.bsky.embed.video',
-            video: videoBlob.blob as BlobRef,
+            video: videoBlob.blob,
             alt: video.alt || '',
             ...(video.metadata?.width && video.metadata?.height && {
                 aspectRatio: {
@@ -90,7 +89,7 @@ export class EmbedBuilder {
             imagesToUpload.map(async img => {
                 const media = await this.mediaUploader.upload(img.url, img.alt || '');
                 return {
-                    image: media.blob as BlobRef,
+                    image: media.blob,
                     alt: img.alt || '',
                     ...(img.aspectRatio?.width && img.aspectRatio?.height && {
                         aspectRatio: {
@@ -124,10 +123,10 @@ export class EmbedBuilder {
             return {
                 $type: 'app.bsky.embed.external',
                 external: {
-                    uri: card.uri!,
+                    uri: card.uri,
                     title: title,
                     description: card.description || '',
-                    ...(thumb && { thumb: thumb.blob as BlobRef }),
+                    ...(thumb && { thumb: thumb.blob }),
                 },
             };
         } catch (error) {

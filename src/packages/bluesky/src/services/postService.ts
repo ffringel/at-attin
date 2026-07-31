@@ -55,7 +55,7 @@ export class PostService {
      * Fetch recent feed for duplicate detection
      */
     async loadFeed(): Promise<void> {
-        const did = (this.agent as any).session?.did || this.agent.did || '';
+        const did = this.agent.did ?? '';
         const feed = await this.agent.app.bsky.feed.getAuthorFeed({
             actor: did,
             limit: MAX_POSTS,
