@@ -1,6 +1,6 @@
 import type { PostContent } from '@at-attin/types';
 import * as Mastodon from 'tsl-mastodon-api';
-import { MastodonAPIError, handleMastodonError } from '../utils/errorHandling.js';
+import { MastodonAPIError } from '../utils/errorHandling.js';
 import { Sanitizer } from '../utils/contentSanitizer.js';
 import { processImages, processVideo, processCard } from '../utils/mediaProcessor.js';
 import { MAX_POSTS } from '../config/constants.js';
@@ -52,13 +52,8 @@ export default class MastodonService {
      * @returns Processed posts ready for Bluesky
      */
     async getPosts(limit: number = MAX_POSTS): Promise<PostContent[]> {
-        try {
-            const statuses = await this.fetchStatuses(limit);
-            return this.processPosts(statuses);
-        } catch (error) {
-            handleMastodonError(error, 'Failed to fetch Mastodon posts');
-            throw error;
-        }
+        const statuses = await this.fetchStatuses(limit);
+        return this.processPosts(statuses);
     }
 
     /**
@@ -69,19 +64,33 @@ export default class MastodonService {
      * request per run, so no manual delay or rate-limit logging is needed here.
      */
     private async fetchStatuses(limit: number): Promise<Mastodon.JSON.Status[]> {
-        const response = await this.api.getStatuses(
-            this.config.sourceAccountId,
-            { limit }
-        );
-
-        if (response.failed) {
+        try {
+            const response = await this.api.getStatuses(
+                this.config.sourceAccountId,
+                { limit }
+            );
+            return response.json;
+        } catch (error) {
+            // tsl-mastodon-api throws the raw API.Result object — a plain
+            // object with .status/.json, NOT an Error — on any non-200
+            // response, so without wrapping it the top-level catch (which logs
+            // error.message) would print "undefined". Wrap it so a real Error
+            // with a useful message propagates to that single log site.
+            // Mastodon's human-readable detail lives in result.json.error;
+            // result.error is a placeholder Error with an empty message except
+            // on transport faults.
+            const status = (error as { status?: number })?.status;
+            const json = (error as { json?: { error?: string } })?.json;
+            const inner = (error as { error?: Error })?.error;
+            const detail =
+                json?.error ??
+                (inner instanceof Error && inner.message ? inner.message : null) ??
+                'Unknown error';
             throw new MastodonAPIError(
-                `Mastodon API returned error: ${response.error || 'Unknown error'}`,
-                response.status
+                `Mastodon API returned error: ${detail} (Status: ${status})`,
+                status
             );
         }
-
-        return response.json;
     }
 
     /**
