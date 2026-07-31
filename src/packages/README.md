@@ -33,6 +33,7 @@ const service = new MastodonService({
     accessToken: '...',
     apiUrl: 'https://mastodon.example/api/v1/',
     sourceAccountId: '123456',
+    sourceAccount: '@user@domain',
     blueskyHandle: 'user.bsky.social',
 });
 
@@ -43,7 +44,7 @@ const posts = await service.getPosts(20);
 Bluesky bot for posting content via the AT Protocol.
 
 **Modules:**
-- `blueskyBot` - Main `BlueskyBot` class (composition root + session)
+- `bot` - Main `BlueskyBot` class (composition root + session)
 - `config/constants` - Tunable limits and sizes
 - `services/postService` - Posting orchestrator (dedup, build, post, thread)
 - `services/postRegistry` - Mastodon↔Bluesky mapping + duplicate detection
@@ -60,6 +61,7 @@ import { BlueskyBot } from '@at-attin/bluesky';
 
 await BlueskyBot.run(
     () => fetchPosts(),
+    { identifier: 'user.bsky.social', password: 'app-password' },
     { dryRun: false },
     'https://fallback.image/'
 );
@@ -69,7 +71,7 @@ await BlueskyBot.run(
 
 Build all packages:
 ```bash
-npm run build:all
+npm run build
 ```
 
 Build individual packages:
