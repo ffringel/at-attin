@@ -3,7 +3,6 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
@@ -13,16 +12,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
     "composite": true,
-    "incremental": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/packages"],
-  "references": [
-    { "path": "./src/packages/types" },
-    { "path": "./src/packages/mastodon" },
-    { "path": "./src/packages/bluesky" }
-  ]
+  "exclude": ["node_modules", "dist"]
 }
