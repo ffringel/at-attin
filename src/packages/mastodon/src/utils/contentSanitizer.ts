@@ -1,4 +1,4 @@
-import { REGEX } from './constants.js';
+import { REGEX } from '../config/constants.js';
 
 /**
  * Sanitizes Mastodon HTML content for Bluesky plain text format

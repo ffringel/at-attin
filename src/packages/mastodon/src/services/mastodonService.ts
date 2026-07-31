@@ -1,10 +1,10 @@
 import type { PostContent } from '@at-attin/types';
 import type { JSON as MastodonJSON } from 'tsl-mastodon-api';
 import { MastodonClient } from './apiClient.js';
-import { handleMastodonError } from './errorHandling.js';
-import { sanitizeContent } from './contentSanitizer.js';
-import { processImages, processVideo, processCard } from './mediaProcessor.js';
-import { MAX_POSTS } from './constants.js';
+import { handleMastodonError } from '../utils/errorHandling.js';
+import { sanitizeContent } from '../utils/contentSanitizer.js';
+import { processImages, processVideo, processCard } from '../utils/mediaProcessor.js';
+import { MAX_POSTS } from '../config/constants.js';
 
 /**
  * Mastodon Quote type (v4.5+)

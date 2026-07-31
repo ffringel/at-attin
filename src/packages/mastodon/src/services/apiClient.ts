@@ -1,5 +1,5 @@
 import * as Mastodon from 'tsl-mastodon-api';
-import { MastodonAPIError } from './errorHandling.js';
+import { MastodonAPIError } from '../utils/errorHandling.js';
 
 /**
  * Mastodon API Client configuration
