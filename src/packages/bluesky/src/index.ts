@@ -6,7 +6,6 @@ export { PostService } from './postService.js';
 export type { BotOptions } from '@at-attin/types';
 
 // Re-export sub-modules for advanced usage
-export { SessionManager } from './sessionManager.js';
 export { ThreadManager } from './threadManager.js';
 export { MediaUploader } from './mediaUploader.js';
 export { EmbedBuilder } from './embedBuilder.js';

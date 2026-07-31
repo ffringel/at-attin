@@ -43,7 +43,6 @@ Bluesky bot for posting content via the AT Protocol.
 
 **Modules:**
 - `blueskyBot` - Main `BlueskyBot` class
-- `sessionManager` - Authentication and session handling
 - `threadManager` - Reply thread management
 - `mediaUploader` - Media upload with retry logic
 - `embedBuilder` - Embed structure construction

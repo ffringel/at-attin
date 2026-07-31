@@ -246,7 +246,7 @@ export class PostService {
         } : undefined;
 
         // Build and validate post record
-        const { record } = await this.postBuilder.build(post, embed, replyRef);
+        const record = await this.postBuilder.build(post, embed, replyRef);
 
         // Post with error handling
         try {

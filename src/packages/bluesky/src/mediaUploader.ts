@@ -64,7 +64,7 @@ export class MediaUploader {
             }
 
             // Upload with retry logic
-            return await this.uploadWithRetry(buffer, alt, contentType, isVideo);
+            return await this.uploadWithRetry(buffer, alt, contentType);
 
         } catch (error) {
             // Fallback to alt card image for images only
@@ -87,7 +87,6 @@ export class MediaUploader {
         buffer: Buffer,
         alt: string,
         contentType: string,
-        isVideo: boolean,
         attempt = 1
     ): Promise<MediaUpload> {
         try {
@@ -105,7 +104,7 @@ export class MediaUploader {
                     );
                     console.warn(`Upload failed (attempt ${attempt}), retrying in ${delay}ms...`);
                     await this.sleep(delay);
-                    return this.uploadWithRetry(buffer, alt, contentType, isVideo, attempt + 1);
+                    return this.uploadWithRetry(buffer, alt, contentType, attempt + 1);
                 }
             }
             throw error;
