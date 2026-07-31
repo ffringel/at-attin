@@ -7,6 +7,7 @@ import { MediaUploader } from '../media/mediaUploader.js';
 import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostMapper } from './postMapper.js';
+import { splitLongPost } from '../utils/postSplitter.js';
 import {MAX_POST_LENGTH} from "../config/constants.js";
 
 // Number of recent author-feed posts to fetch for duplicate detection.
@@ -88,7 +89,7 @@ export class PostService {
         // For thread chunks, compare without the [x/y] suffix
         const threadPattern = /\s*\[\d+\/\d+\]$/;
         const contents = post.content.length > 300
-            ? this.threadManager.splitLongPost(post.content)
+            ? splitLongPost(post.content)
             : [post.content];
         const prefixes = contents
             .map(c => c.replace(threadPattern, '').trim().substring(0, 50))
@@ -287,7 +288,7 @@ export class PostService {
      * Handle long posts by splitting into threaded chunks
      */
     private async handleLongPost(post: PostContent): Promise<void> {
-        const chunks = this.threadManager.splitLongPost(post.content);
+        const chunks = splitLongPost(post.content);
         this.threadManager.resetReplyRefs();
 
         for (const [i, chunk] of chunks.entries()) {
