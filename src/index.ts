@@ -1,10 +1,10 @@
 import MastodonService from '@at-attin/mastodon';
 import { BlueskyBot } from '@at-attin/bluesky';
-import { bskyApi, bskyAccount, altCardImage, giveaways, sourceAccountId, sourceAccount, mastodonApi, access_token } from './config/config.js';
+import { bskyApi, bskyAccount, altCardImage, giveaways, sourceAccountId, sourceAccount, mastodonApi, accessToken } from './config/config.js';
 
 // Create Mastodon service instance
 const mastodonService = new MastodonService({
-    accessToken: access_token,
+    accessToken,
     apiUrl: mastodonApi,
     sourceAccountId: sourceAccountId,
     sourceAccount: sourceAccount,

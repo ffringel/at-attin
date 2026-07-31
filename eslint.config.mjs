@@ -1,6 +1,5 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
-import tsParser from "@typescript-eslint/parser";
 import globals from "globals";
 
 export default [
@@ -9,9 +8,10 @@ export default [
   {
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
-      parser: tsParser,
+      // `typescript-eslint` meta-package exposes the parser directly — no need
+      // for a separate @typescript-eslint/parser dependency.
+      parser: tseslint.parser,
       parserOptions: {
-        project: true,
         ecmaVersion: "latest",
         sourceType: "module",
       },

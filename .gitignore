@@ -136,3 +136,9 @@ dist
 .pnp.*
 /.idea/
 /memory/
+
+# Planning/instruction docs and local-only validation artifacts — intentionally
+# not part of the shipped project (do not commit).
+/docs/
+/scripts/
+/.claude/

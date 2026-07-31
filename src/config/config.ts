@@ -11,7 +11,7 @@ const envSchema = z.object({
     MASTODON_ACCOUNT_ID: z.string().nonempty(),
     MASTODON_ACCESS_TOKEN: z.string().optional().default(""),
     ALT_CARD_IMG: z.string().nonempty(),
-    GIVEAWAYS: z.string().nonempty().default("retweet"),
+    GIVEAWAYS: z.string().nonempty().default("#AD"),
 });
 
 const parsedSchema = envSchema.parse(env);
@@ -28,7 +28,8 @@ export const bskyAccount: AtpAgentLoginOpts = {
 export const mastodonApi = parsedSchema.MASTODON_API;
 export const sourceAccount = parsedSchema.MASTODON_HANDLE;
 export const sourceAccountId = parsedSchema.MASTODON_ACCOUNT_ID;
-// Export access_token for Mastodon API auth - defaults to empty string (env var MASTODON_ACCESS_TOKEN)
-export const access_token = parsedSchema.MASTODON_ACCESS_TOKEN || "";
+// Optional Mastodon API access token — public timelines need no auth.
+// Defaults to "" via the zod schema (env var MASTODON_ACCESS_TOKEN).
+export const accessToken = parsedSchema.MASTODON_ACCESS_TOKEN;
 export const giveaways = parsedSchema.GIVEAWAYS.split(",");
 export const altCardImage = parsedSchema.ALT_CARD_IMG;

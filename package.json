@@ -13,9 +13,8 @@
     "build:types": "npm run build -w @at-attin/types",
     "build:mastodon": "npm run build -w @at-attin/mastodon",
     "build:bluesky": "npm run build -w @at-attin/bluesky",
-    "build:all": "npm run build:types && npm run build:mastodon && npm run build:bluesky && npm run build",
     "lint": "eslint src/",
-    "lint:fix": "eslint --fix .",
+    "lint:fix": "eslint --fix src/",
     "start": "node .",
     "dev": "nodenv .",
     "clean": "rm -rf dist src/packages/*/dist"
@@ -40,8 +39,6 @@
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.13.1",
-    "@typescript-eslint/eslint-plugin": "^8.24.0",
-    "@typescript-eslint/parser": "^8.24.0",
     "eslint": "^9.20.0",
     "globals": "^15.15.0",
     "node-env-run": "^4.0.2",

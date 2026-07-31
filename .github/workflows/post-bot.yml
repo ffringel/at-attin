@@ -1,0 +1,58 @@
+name: "Post bot (reusable)"
+
+# Shared job body for every per-account bot workflow. Each account-specific
+# workflow (jeffzrebiec.yml, liverpool.yml, ...) keeps its own `schedule` +
+# `workflow_dispatch` trigger and calls this with its account inputs + the
+# matching BSKY_PASSWORD secret. This keeps the per-account cron triggers
+# independent (one workflow file per account) while removing the duplicated
+# step body.
+on:
+  workflow_call:
+    inputs:
+      bskyHandle:
+        required: true
+        type: string
+      mastodonHandle:
+        required: true
+        type: string
+      mastodonAccountId:
+        required: true
+        type: string
+      altCardImg:
+        required: true
+        type: string
+    secrets:
+      bskyPassword:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One run per account at a time: a 5-minute cron can otherwise overlap a
+    # slow previous run. cancel-in-progress is safe here — an interrupted run
+    # posts nothing partial that the next run would duplicate (uncreated posts
+    # are re-fetched and retried).
+    concurrency:
+      group: ${{ inputs.bskyHandle }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Send post
+        run: npm start
+        env:
+          BSKY_HANDLE: ${{ inputs.bskyHandle }}
+          BSKY_PASSWORD: ${{ secrets.bskyPassword }}
+          MASTODON_HANDLE: ${{ inputs.mastodonHandle }}
+          MASTODON_ACCOUNT_ID: ${{ inputs.mastodonAccountId }}
+          ALT_CARD_IMG: ${{ inputs.altCardImg }}
