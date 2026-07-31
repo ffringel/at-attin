@@ -103,7 +103,7 @@ export default class MastodonService {
                     card: processCard(post.card ?? undefined),
                     quotedStatus,
                     mastodonId: post.id,
-                    crossPostId: crossPostId,  // Store cross-post status ID for quote mapping
+                    crossPostId: crossPostId,
                 };
                 return result;
             })

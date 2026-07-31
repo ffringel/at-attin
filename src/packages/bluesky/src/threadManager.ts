@@ -53,14 +53,6 @@ export class ThreadManager {
         this.parentUri = '';
         this.parentCid = '';
     }
-
-    /**
-     * Check if a thread has been started
-     */
-    hasThread(): boolean {
-        return this.rootUri !== '';
-    }
-
     /**
      * Split a long post into chunks that fit within character limits
      * @param text - The post text to split
