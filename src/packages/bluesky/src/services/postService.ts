@@ -2,11 +2,9 @@ import { AppBskyFeedPost, Agent } from '@atproto/api';
 import { XRPCError } from '@atproto/xrpc';
 import type { PostContent } from '@at-attin/types';
 import { ThreadManager } from './threadManager.js';
-import { MediaUploader } from '../media/mediaUploader.js';
 import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostRegistry } from './postRegistry.js';
-import { QuoteResolver } from './quoteResolver.js';
 import { splitLongPost } from '../utils/postSplitter.js';
 import {MAX_POST_LENGTH} from "../config/constants.js";
 
@@ -27,19 +25,29 @@ const MAX_POSTS = 100;
 export class PostService {
     private readonly agent: Agent;
     private readonly threadManager: ThreadManager;
-    private readonly mediaUploader: MediaUploader;
     private readonly embedBuilder: EmbedBuilder;
     private readonly postBuilder: PostBuilder;
     private readonly registry: PostRegistry;
     private readonly dryRun: boolean;
 
-    constructor(agent: Agent, altCardImage?: string, dryRun = false) {
+    /**
+     * Pure orchestrator: all collaborators are injected (constructed by the
+     * composition root, BlueskyBot). PostService owns no `new` of its
+     * collaborators.
+     */
+    constructor(
+        agent: Agent,
+        registry: PostRegistry,
+        threadManager: ThreadManager,
+        embedBuilder: EmbedBuilder,
+        postBuilder: PostBuilder,
+        dryRun = false
+    ) {
         this.agent = agent;
-        this.registry = new PostRegistry();
-        this.threadManager = new ThreadManager();
-        this.mediaUploader = new MediaUploader(agent, altCardImage);
-        this.embedBuilder = new EmbedBuilder(this.mediaUploader, new QuoteResolver(agent, this.registry));
-        this.postBuilder = new PostBuilder(agent);
+        this.registry = registry;
+        this.threadManager = threadManager;
+        this.embedBuilder = embedBuilder;
+        this.postBuilder = postBuilder;
         this.dryRun = dryRun;
     }
 
