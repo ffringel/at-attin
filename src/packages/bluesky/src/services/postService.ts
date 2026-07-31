@@ -6,7 +6,7 @@ import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostRegistry } from './postRegistry.js';
 import { splitLongPost } from '../utils/postSplitter.js';
-import {MAX_POST_LENGTH} from "../config/constants.js";
+import {MAX_POST_LENGTH, MAX_RETRIES} from "../config/constants.js";
 
 // Number of recent author-feed posts to fetch for duplicate detection.
 // Kept larger than a single run's post volume so previously-mirrored posts
@@ -69,7 +69,8 @@ export class PostService {
     private async handlePostError(
         error: unknown,
         post: PostContent,
-        isReply: boolean
+        isReply: boolean,
+        attempt: number
     ): Promise<void> {
         if (!(error instanceof XRPCError)) {
             throw error;
@@ -79,16 +80,30 @@ export class PostService {
 
         switch (xrpcError.status) {
             case 429: {
-                const retryAfter = xrpcError.headers?.['ratelimit-reset']
-                    ? parseInt(xrpcError.headers['ratelimit-reset'], 10) * 1000
+                // Give up after MAX_RETRIES so a persistent 429 can't retry
+                // forever (the old path had no cap). The reset header is an
+                // absolute Unix timestamp (seconds), not a delta — sleeping
+                // for the raw value (~1.7e12 ms) hangs the process for
+                // ~54,000 years. Compute the real remaining delta, clamped ≥ 0.
+                if (attempt >= MAX_RETRIES) {
+                    console.error(`Rate limited: exceeded ${MAX_RETRIES} retries, giving up`);
+                    throw xrpcError;
+                }
+                const reset = Number(xrpcError.headers?.['ratelimit-reset']) || 0;
+                const retryAfter = reset
+                    ? Math.max(0, (reset - Date.now() / 1000) * 1000)
                     : 60000;
-                console.warn(`Rate limited. Retrying after ${retryAfter}ms`);
+                console.warn(`Rate limited. Retrying in ${Math.round(retryAfter)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
                 await this.sleep(retryAfter);
-                return this.postContent(post, isReply);
+                return this.postContent(post, isReply, attempt + 1);
             }
             case 401: {
-                console.error('Authentication expired, attempting re-login');
-                throw error;
+                // Honest message: this path never re-logged in despite the old
+                // "attempting re-login" log. Re-login would require the
+                // CredentialSession (owned by BlueskyBot, not the orchestrator),
+                // so surface the failure to the caller instead of pretending.
+                console.error('Authentication failed (401)');
+                throw xrpcError;
             }
             case 400: {
                 console.error('Validation error:', xrpcError.error, xrpcError.message);
@@ -113,7 +128,7 @@ export class PostService {
      * retry path (handlePostError) also calls this directly and must not be
      * blocked by a duplicate check since the post hasn't been created yet.
      */
-    async postContent(post: PostContent, isReply = false): Promise<void> {
+    async postContent(post: PostContent, isReply = false, attempt = 0): Promise<void> {
         // Build embed structure
         let embed = await this.embedBuilder.build(post);
         let content = post.content;
@@ -164,7 +179,7 @@ export class PostService {
             this.registry.storeMappings(post, response);
             console.log('Posted successfully:', record.text);
         } catch (error) {
-            await this.handlePostError(error, post, isReply);
+            await this.handlePostError(error, post, isReply, attempt);
         }
     }
 
