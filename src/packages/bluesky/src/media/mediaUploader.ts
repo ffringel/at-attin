@@ -6,6 +6,7 @@ import {
     MAX_RETRY_DELAY,
 } from '../config/constants.js';
 import { fetchMedia } from './mediaFetcher.js';
+import { sleep } from '../utils/sleep.js';
 
 /**
  * Result of uploading a piece of media to Bluesky: the PDS blob reference
@@ -81,7 +82,7 @@ export class MediaUploader {
             const { data: { blob } } = await this.agent.uploadBlob(buffer, {
                 encoding: contentType,
             });
-            return blob as BlobRef;
+            return blob;
         } catch (error) {
             if (error instanceof XRPCError) {
                 // Retry on rate limit or server error
@@ -91,15 +92,11 @@ export class MediaUploader {
                         MAX_RETRY_DELAY
                     );
                     console.warn(`Upload failed (attempt ${attempt}), retrying in ${delay}ms...`);
-                    await this.sleep(delay);
+                    await sleep(delay);
                     return this.uploadBlob(buffer, contentType, attempt + 1);
                 }
             }
             throw error;
         }
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }

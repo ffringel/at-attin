@@ -25,7 +25,7 @@ export class BlueskyBot {
     private readonly agent: Agent;
     private readonly postService: PostService;
 
-    static defaultOptions: BotOptions = {
+    static readonly defaultOptions: BotOptions = {
         service: 'https://bsky.social',
         dryRun: false,
     };

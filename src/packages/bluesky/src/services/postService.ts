@@ -6,6 +6,7 @@ import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostRegistry } from './postRegistry.js';
 import { splitLongPost } from '../utils/postSplitter.js';
+import { sleep } from '../utils/sleep.js';
 import {MAX_POST_LENGTH, MAX_RETRIES, MAX_RATE_LIMIT_WAIT} from "../config/constants.js";
 
 // Number of recent author-feed posts to fetch for duplicate detection.
@@ -76,9 +77,7 @@ export class PostService {
             throw error;
         }
 
-        const xrpcError = error as XRPCError;
-
-        switch (xrpcError.status) {
+        switch (error.status) {
             case 429: {
                 // Give up after MAX_RETRIES so a persistent 429 can't retry
                 // forever. The reset header is an absolute Unix timestamp
@@ -88,9 +87,9 @@ export class PostService {
                 // long rate-limit window can't hang the cron either.
                 if (attempt >= MAX_RETRIES) {
                     console.error(`Rate limited: exceeded ${MAX_RETRIES} retries, giving up`);
-                    throw xrpcError;
+                    throw error;
                 }
-                const reset = Number(xrpcError.headers?.['ratelimit-reset']) || 0;
+                const reset = Number(error.headers?.['ratelimit-reset']) || 0;
                 const retryAfter = reset
                     ? Math.max(0, (reset - Date.now() / 1000) * 1000)
                     : 60000;
@@ -103,10 +102,10 @@ export class PostService {
                         `(> ${MAX_RATE_LIMIT_WAIT}ms), giving up this run; ` +
                         `next cron run will retry`
                     );
-                    throw xrpcError;
+                    throw error;
                 }
                 console.warn(`Rate limited. Retrying in ${Math.round(retryAfter)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
-                await this.sleep(retryAfter);
+                await sleep(retryAfter);
                 return this.postContent(post, isReply, attempt + 1);
             }
             case 401: {
@@ -115,18 +114,18 @@ export class PostService {
                 // CredentialSession (owned by BlueskyBot, not the orchestrator),
                 // so surface the failure to the caller instead of pretending.
                 console.error('Authentication failed (401)');
-                throw xrpcError;
+                throw error;
             }
             case 400: {
-                console.error('Validation error:', xrpcError.error, xrpcError.message);
+                console.error('Validation error:', error.error, error.message);
                 throw error;
             }
             case 413: {
-                console.error('Media too large:', xrpcError.message);
+                console.error('Media too large:', error.message);
                 throw error;
             }
             default: {
-                console.error(`XRPC Error ${xrpcError.status}:`, xrpcError.error, xrpcError.message);
+                console.error(`XRPC Error ${error.status}:`, error.error, error.message);
                 throw error;
             }
         }
@@ -142,7 +141,7 @@ export class PostService {
      */
     async postContent(post: PostContent, isReply = false, attempt = 0): Promise<void> {
         // Build embed structure
-        let embed = await this.embedBuilder.build(post);
+        const embed = await this.embedBuilder.build(post);
         let content = post.content;
 
         // Fallback for own quotes: if we couldn't build a Bluesky quote embed
@@ -159,12 +158,9 @@ export class PostService {
             }
         }
 
-        // Get reply reference if this is a reply
-        const threadReplyRef = isReply ? this.threadManager.getReplyRef() : undefined;
-        const replyRef = threadReplyRef ? {
-            root: { uri: threadReplyRef.root.uri, cid: threadReplyRef.root.cid },
-            parent: { uri: threadReplyRef.parent.uri, cid: threadReplyRef.parent.cid },
-        } : undefined;
+        // Get reply reference if this is a reply (ThreadManager returns a fresh
+        // object, so no defensive copy is needed).
+        const replyRef = isReply ? this.threadManager.getReplyRef() : undefined;
 
         // Build and validate post record
         const record = await this.postBuilder.build(post, embed, replyRef);
@@ -193,13 +189,6 @@ export class PostService {
         } catch (error) {
             await this.handlePostError(error, post, isReply, attempt);
         }
-    }
-
-    /**
-     * Handle short posts (under character limit)
-     */
-    private async handleShortPost(post: PostContent): Promise<void> {
-        await this.postContent(post);
     }
 
     /**
@@ -253,13 +242,9 @@ export class PostService {
         }
 
         if (post.content.length <= MAX_POST_LENGTH) {
-            await this.handleShortPost(post);
+            await this.postContent(post);
         } else {
             await this.handleLongPost(post);
         }
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }

@@ -2,6 +2,7 @@ import { AppBskyFeedPost, AppBskyFeedGetAuthorFeed } from '@atproto/api';
 import type { PostContent } from '@at-attin/types';
 import type { FeedViewPost } from '@atproto/api/dist/client/types/app/bsky/feed/defs.js';
 import { splitLongPost } from '../utils/postSplitter.js';
+import { MAX_POST_LENGTH } from '../config/constants.js';
 
 /**
  * Owns the Mastodon↔Bluesky mapping and duplicate-detection state for a run:
@@ -59,7 +60,7 @@ export class PostRegistry {
 
         // For thread chunks, compare without the [x/y] suffix
         const threadPattern = /\s*\[\d+\/\d+\]$/;
-        const contents = post.content.length > 300
+        const contents = post.content.length > MAX_POST_LENGTH
             ? splitLongPost(post.content)
             : [post.content];
         const prefixes = contents

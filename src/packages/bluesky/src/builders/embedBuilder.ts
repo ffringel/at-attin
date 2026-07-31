@@ -25,9 +25,9 @@ export type Embed =
  */
 export class EmbedBuilder {
     private readonly mediaUploader: MediaUploader;
-    private readonly quoteResolver?: QuoteResolver;
+    private readonly quoteResolver: QuoteResolver;
 
-    constructor(mediaUploader: MediaUploader, quoteResolver?: QuoteResolver) {
+    constructor(mediaUploader: MediaUploader, quoteResolver: QuoteResolver) {
         this.mediaUploader = mediaUploader;
         this.quoteResolver = quoteResolver;
     }
@@ -115,8 +115,8 @@ export class EmbedBuilder {
         card: NonNullable<PostContent['card']>
     ): Promise<AppBskyEmbedExternal.Main | undefined> {
         try {
-            // card.title is validated before this method is called
-            const title = card.title || 'Link';
+            // card.title/description are validated before this method is called
+            const title = card.title;
             const thumb = card.image
                 ? await this.mediaUploader.upload(card.image, title)
                 : null;
@@ -126,7 +126,7 @@ export class EmbedBuilder {
                 external: {
                     uri: card.uri,
                     title: title,
-                    description: card.description || '',
+                    description: card.description,
                     ...(thumb && { thumb: thumb.blob }),
                 },
             };
@@ -142,10 +142,6 @@ export class EmbedBuilder {
      * construction once a {uri, cid} is resolved.
      */
     private async buildQuoteEmbed(quotedStatus: NonNullable<PostContent['quotedStatus']>): Promise<AppBskyEmbedRecord.Main | undefined> {
-        if (!this.quoteResolver) {
-            return undefined;
-        }
-
         const resolved = await this.quoteResolver.resolve(quotedStatus);
         if (!resolved) {
             return undefined;

@@ -1,10 +1,4 @@
-/**
- * Reply reference structure for thread creation
- */
-export interface ReplyRef {
-    root: { uri: string; cid: string };
-    parent: { uri: string; cid: string };
-}
+import type { AppBskyFeedPost } from '@atproto/api';
 
 /**
  * Manages reply thread state for creating threaded posts
@@ -19,7 +13,7 @@ export class ThreadManager {
      * Get the current reply reference for nesting replies
      * @returns ReplyRef or undefined if no thread started
      */
-    getReplyRef(): ReplyRef | undefined {
+    getReplyRef(): AppBskyFeedPost.ReplyRef | undefined {
         if (!this.rootUri || !this.parentUri) {
             return undefined;
         }

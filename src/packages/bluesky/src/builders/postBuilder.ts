@@ -1,4 +1,4 @@
-import { RichText, AppBskyFeedPost, AppBskyFeedPost as FeedPost, Agent } from '@atproto/api';
+import { RichText, AppBskyFeedPost, Agent } from '@atproto/api';
 import type { PostContent } from '@at-attin/types';
 import type { Embed } from './embedBuilder.js';
 
@@ -23,7 +23,7 @@ export class PostBuilder {
     async build(
         content: PostContent,
         embed?: Embed,
-        replyRef?: FeedPost.ReplyRef
+        replyRef?: AppBskyFeedPost.ReplyRef
     ): Promise<AppBskyFeedPost.Record> {
         const text = content.content.trim();
 
