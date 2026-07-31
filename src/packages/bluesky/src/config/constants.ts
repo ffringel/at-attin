@@ -1,6 +1,5 @@
 // Post limits
 export const MAX_POST_LENGTH = 300;
-export const CHUNK_BUFFER = 6; // Space for [x/y] suffix
 
 // Media size limits (updated to current AT Protocol limits)
 export const MAX_IMAGE_SIZE = 2000000;    // 2MB
