@@ -167,11 +167,16 @@ export class EmbedBuilder {
             }
         }
 
+        // Skip quote embed if we couldn't get a valid CID
+        if (!cid) {
+            return undefined;
+        }
+
         return {
             $type: 'app.bsky.embed.record',
             record: {
                 uri: recordUri,
-                cid: cid || '',
+                cid: cid,
             },
         };
     }

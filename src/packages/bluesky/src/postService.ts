@@ -7,13 +7,6 @@ import { MediaUploader } from './mediaUploader.js';
 import { EmbedBuilder } from './embedBuilder.js';
 import { PostBuilder } from './postBuilder.js';
 import { PostMapper } from './postMapper.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get directory name for ES modules
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const POSTED_IDS_FILE = path.join(__dirname, 'postedIds.json');
 
 /**
  * Handles all Bluesky posting operations including:
@@ -31,8 +24,8 @@ export class PostService {
     private readonly postBuilder: PostBuilder;
     private readonly postMapper: PostMapper;
     private feed?: AppBskyFeedGetAuthorFeed.Response;
-    // Track Mastodon post IDs that have been posted (persisted across runs)
-    private readonly postedIds: Set<string>;
+    // Track Mastodon post IDs that have been posted
+    private readonly postedIds = new Set<string>();
 
     constructor(agent: Agent, altCardImage?: string) {
         this.agent = agent;
@@ -41,36 +34,6 @@ export class PostService {
         this.mediaUploader = new MediaUploader(agent, altCardImage);
         this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.postMapper, agent);
         this.postBuilder = new PostBuilder(agent);
-
-        // Load persisted posted IDs
-        this.postedIds = this.loadPostedIds();
-    }
-
-    /**
-     * Load posted IDs from persistent storage
-     */
-    private loadPostedIds(): Set<string> {
-        try {
-            if (fs.existsSync(POSTED_IDS_FILE)) {
-                const data = fs.readFileSync(POSTED_IDS_FILE, 'utf-8');
-                const ids = JSON.parse(data) as string[];
-                return new Set(ids);
-            }
-        } catch (err) {
-            console.error('Failed to load posted IDs:', (err as Error).message);
-        }
-        return new Set();
-    }
-
-    /**
-     * Save posted IDs to persistent storage
-     */
-    private savePostedIds(): void {
-        try {
-            fs.writeFileSync(POSTED_IDS_FILE, JSON.stringify(Array.from(this.postedIds)), 'utf-8');
-        } catch (err) {
-            console.error('Failed to save posted IDs:', (err as Error).message);
-        }
     }
 
     /**
@@ -89,34 +52,37 @@ export class PostService {
      * Uses Mastodon post ID for reliable matching
      */
     private isDuplicate(post: PostContent): boolean {
-        // Check by Mastodon ID (most reliable - for posts in current run)
+        // Check by Mastodon ID (most reliable)
         if (post.mastodonId && this.postedIds.has(post.mastodonId)) {
             return true;
         }
 
-        // Check the feed from previous runs
+        // Also check the feed from previous runs
         if (!this.feed?.data?.feed) return false;
-
-        const threadPattern = /\s*\[\d+\/\d+\]$/;
-        const whitespacePattern = /\s+/g;
-
-        // Normalize: remove thread suffix and collapse whitespace
-        const normalizedContent = post.content
-            .replace(threadPattern, '')
-            .replace(whitespacePattern, ' ')
-            .trim();
 
         return this.feed.data.feed.some((postView: FeedViewPost) => {
             const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
             if (!currentRecord) return false;
 
+            // Check if this post has a matching Mastodon ID in its record
+            // (stored as a custom field or in the URI)
             const currentText = currentRecord.text?.trim() || '';
-            const normalizedCurrent = currentText
-                .replace(threadPattern, '')
-                .replace(whitespacePattern, ' ')
-                .trim();
 
-            return normalizedCurrent === normalizedContent;
+            // For thread chunks, compare without the [x/y] suffix
+            const threadPattern = /\s*\[\d+\/\d+\]$/;
+            const normalizedText = currentText.replace(threadPattern, '').trim();
+
+            // Check if the normalized text matches and the Mastodon ID would match
+            if (post.mastodonId) {
+                // If we have a Mastodon ID, check if this looks like the same post
+                // by comparing text length and prefix
+                if (normalizedText.length > 20 &&
+                    normalizedText.substring(0, 50) === post.content.replace(threadPattern, '').trim().substring(0, 50)) {
+                    return true;
+                }
+            }
+
+            return false;
         });
     }
 
@@ -126,6 +92,10 @@ export class PostService {
     private extractMastodonId(post: PostContent): string | undefined {
         if (post.mastodonId) {
             return post.mastodonId;
+        }
+        if (post.quotedStatus?.url) {
+            const match = post.quotedStatus.url.match(/(\d+)$/);
+            if (match) return match[1];
         }
         return undefined;
     }
@@ -139,7 +109,6 @@ export class PostService {
         if (mastodonId) {
             this.postedIds.add(mastodonId);
             this.postMapper.set(mastodonId, '', response.uri);
-            this.savePostedIds();
         }
 
         // Store mapping for quoted status ID
@@ -249,12 +218,9 @@ export class PostService {
         this.threadManager.resetReplyRefs();
 
         for (const [i, chunk] of chunks.entries()) {
-            // Preserve all post metadata including mastodonId for duplicate detection
-            const updatedPost: PostContent = {
-                ...post,
-                created_at: post.created_at,
-                content: chunk,
-            };
+            const updatedPost = i === 0
+                ? { ...post, content: chunk }
+                : { created_at: post.created_at, content: chunk };
 
             await this.postContent(updatedPost, i > 0);
         }
