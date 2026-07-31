@@ -6,7 +6,7 @@ import { EmbedBuilder } from '../builders/embedBuilder.js';
 import { PostBuilder } from '../builders/postBuilder.js';
 import { PostRegistry } from './postRegistry.js';
 import { splitLongPost } from '../utils/postSplitter.js';
-import {MAX_POST_LENGTH, MAX_RETRIES} from "../config/constants.js";
+import {MAX_POST_LENGTH, MAX_RETRIES, MAX_RATE_LIMIT_WAIT} from "../config/constants.js";
 
 // Number of recent author-feed posts to fetch for duplicate detection.
 // Kept larger than a single run's post volume so previously-mirrored posts
@@ -81,10 +81,11 @@ export class PostService {
         switch (xrpcError.status) {
             case 429: {
                 // Give up after MAX_RETRIES so a persistent 429 can't retry
-                // forever (the old path had no cap). The reset header is an
-                // absolute Unix timestamp (seconds), not a delta — sleeping
-                // for the raw value (~1.7e12 ms) hangs the process for
-                // ~54,000 years. Compute the real remaining delta, clamped ≥ 0.
+                // forever. The reset header is an absolute Unix timestamp
+                // (seconds), not a delta — sleeping for the raw value
+                // (~1.78e12 ms) hangs the process for ~56 years. Compute the
+                // real remaining delta, clamped ≥ 0, and bound the wait so a
+                // long rate-limit window can't hang the cron either.
                 if (attempt >= MAX_RETRIES) {
                     console.error(`Rate limited: exceeded ${MAX_RETRIES} retries, giving up`);
                     throw xrpcError;
@@ -93,6 +94,17 @@ export class PostService {
                 const retryAfter = reset
                     ? Math.max(0, (reset - Date.now() / 1000) * 1000)
                     : 60000;
+                // Don't hang the cron waiting out a long rate-limit window: if
+                // the reset is further out than we're willing to sleep, give up
+                // this run and let the next cron run retry.
+                if (retryAfter > MAX_RATE_LIMIT_WAIT) {
+                    console.error(
+                        `Rate limited: reset in ${Math.round(retryAfter)}ms ` +
+                        `(> ${MAX_RATE_LIMIT_WAIT}ms), giving up this run; ` +
+                        `next cron run will retry`
+                    );
+                    throw xrpcError;
+                }
                 console.warn(`Rate limited. Retrying in ${Math.round(retryAfter)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
                 await this.sleep(retryAfter);
                 return this.postContent(post, isReply, attempt + 1);
