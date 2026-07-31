@@ -1,18 +1,27 @@
-import axios from 'axios';
 import { Agent, BlobRef } from '@atproto/api';
 import { XRPCError } from '@atproto/xrpc';
-import type { MediaUpload } from '@at-attin/types';
 import {
-    MAX_IMAGE_SIZE,
-    MAX_VIDEO_SIZE,
     MAX_RETRIES,
     BASE_RETRY_DELAY,
     MAX_RETRY_DELAY,
 } from '../config/constants.js';
+import { fetchMedia } from './mediaFetcher.js';
 
 /**
- * Handles media uploads to Bluesky with proper mime type detection
- * and retry logic for transient failures.
+ * Result of uploading a piece of media to Bluesky: the PDS blob reference
+ * plus alt text. Bluesky-internal (the mastodon package never imports it).
+ */
+export interface MediaUpload {
+    blob: BlobRef;
+    alt: string;
+}
+
+/**
+ * Uploads media to Bluesky's PDS with retry logic, using {@link fetchMedia} for
+ * the download step. The fetch and upload steps are split so the fallback path
+ * (image failed -> use the configured alt card image) can re-fetch + re-upload
+ * without re-entering `upload`, which previously recursed unboundedly when the
+ * alt card image itself failed (stack overflow).
  */
 export class MediaUploader {
     private readonly agent: Agent;
@@ -24,53 +33,32 @@ export class MediaUploader {
     }
 
     /**
-     * Upload media from a URL with mime type detection and retry logic
+     * Upload media from a URL with mime type detection and retry logic.
      * @param url - URL of the media to upload
      * @param alt - Alt text for accessibility
      * @param isVideo - Whether the media is a video
      * @returns MediaUpload with blob reference and alt text
-     * @throws Error if upload fails after retries
+     * @throws Error if the upload fails after retries (and fallback, if any)
      */
     async upload(url: string, alt: string, isVideo = false): Promise<MediaUpload> {
         try {
-            const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
-
-            // Fetch media
-            const response = await axios.get(url, {
-                responseType: 'arraybuffer',
-                maxContentLength: maxSize,
-                timeout: 30000,
-            });
-
-            const buffer = Buffer.from(response.data);
-
-            // Validate size
-            if (buffer.length > maxSize) {
-                throw new Error(`Media exceeds size limit: ${buffer.length} > ${maxSize}`);
-            }
-
-            // Detect mime type from response headers
-            let contentType = response.headers['content-type'];
-            if (typeof contentType !== 'string') {
-                contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-            }
-
-            // Validate mime type
-            if (isVideo && !contentType.startsWith('video/mp4')) {
-                throw new Error(`Invalid video mime type: ${contentType}`);
-            }
-            if (!isVideo && !contentType.startsWith('image/')) {
-                throw new Error(`Invalid image mime type: ${contentType}`);
-            }
-
-            // Upload with retry logic
-            return await this.uploadWithRetry(buffer, alt, contentType);
-
+            const { buffer, contentType } = await fetchMedia(url, isVideo);
+            const blob = await this.uploadBlob(buffer, contentType);
+            return { blob, alt };
         } catch (error) {
-            // Fallback to alt card image for images only
-            if (this.altCardImage && !isVideo) {
+            // Bounded fallback to the alt card image for images only. This is a
+            // one-shot inline re-fetch + re-upload — it does NOT re-enter
+            // `upload`, so a failing alt card image can't recurse forever.
+            if (!isVideo && this.altCardImage) {
                 console.log('Using fallback image for failed media upload');
-                return this.upload(this.altCardImage, alt || 'Fallback image');
+                try {
+                    const { buffer, contentType } = await fetchMedia(this.altCardImage, false);
+                    const blob = await this.uploadBlob(buffer, contentType);
+                    return { blob, alt: alt || 'Fallback image' };
+                } catch {
+                    // alt card image failed too — fall through and throw the
+                    // original error below (bounded: no further retry).
+                }
             }
 
             if (error instanceof XRPCError) {
@@ -81,19 +69,19 @@ export class MediaUploader {
     }
 
     /**
-     * Internal method for uploading with exponential backoff retry
+     * Upload a buffer to Bluesky's PDS with exponential backoff retry on
+     * rate-limit (429) and server (5xx) errors.
      */
-    private async uploadWithRetry(
+    private async uploadBlob(
         buffer: Buffer,
-        alt: string,
         contentType: string,
         attempt = 1
-    ): Promise<MediaUpload> {
+    ): Promise<BlobRef> {
         try {
             const { data: { blob } } = await this.agent.uploadBlob(buffer, {
                 encoding: contentType,
             });
-            return { blob: blob as BlobRef, alt };
+            return blob as BlobRef;
         } catch (error) {
             if (error instanceof XRPCError) {
                 // Retry on rate limit or server error
@@ -104,7 +92,7 @@ export class MediaUploader {
                     );
                     console.warn(`Upload failed (attempt ${attempt}), retrying in ${delay}ms...`);
                     await this.sleep(delay);
-                    return this.uploadWithRetry(buffer, alt, contentType, attempt + 1);
+                    return this.uploadBlob(buffer, contentType, attempt + 1);
                 }
             }
             throw error;

@@ -11,7 +11,8 @@ Shared TypeScript type definitions used across all at-attin packages.
 - `PostContent` - Main post structure
 - `Image`, `Video`, `Card` - Media types
 - `BotOptions` - Configuration interface
-- `MediaUpload` - Upload result type
+
+(`MediaUpload` was relocated to `@at-attin/bluesky` — it is bluesky-internal.)
 
 ### @at-attin/mastodon
 Mastodon API client for fetching and processing posts.
@@ -42,11 +43,16 @@ const posts = await service.getPosts(20);
 Bluesky bot for posting content via the AT Protocol.
 
 **Modules:**
-- `blueskyBot` - Main `BlueskyBot` class
-- `threadManager` - Reply thread management
-- `mediaUploader` - Media upload with retry logic
-- `embedBuilder` - Embed structure construction
-- `postBuilder` - Post record validation
+- `blueskyBot` - Main `BlueskyBot` class (composition root + session)
+- `config/constants` - Tunable limits and sizes
+- `services/postService` - Posting orchestrator (dedup, build, post, thread)
+- `services/postRegistry` - Mastodon↔Bluesky mapping + duplicate detection
+- `services/threadManager` - Reply-ref state machine
+- `builders/postBuilder` - Post record construction + validation
+- `builders/embedBuilder` - Embed structure construction
+- `media/mediaFetcher` - Media download + mime/size validation
+- `media/mediaUploader` - PDS blob upload with retry + bounded fallback
+- `utils/postSplitter` - Pure long-post splitting
 
 **Usage:**
 ```typescript

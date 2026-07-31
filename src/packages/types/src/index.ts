@@ -1,5 +1,3 @@
-import { BlobRef } from "@atproto/api";
-
 export interface BotOptions {
     service: string | URL;
     dryRun: boolean;
@@ -65,9 +63,4 @@ export interface Card {
     title?: string;
     description?: string;
     image?: string;
-}
-
-export interface MediaUpload {
-    blob: BlobRef;
-    alt: string;
 }
