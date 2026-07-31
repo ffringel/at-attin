@@ -87,10 +87,15 @@ export default class MastodonService {
                     // Strip the quote reference HTML
                     content = content.replace(/<p class="quote-inline">.*?<\/p>/g, '').trim();
 
-                    // If the quoted post is from a different account (not our own),
-                    // we can't create a quote embed. Instead, append the URL which
-                    // Bluesky will render as a link card.
-                    const isOwnQuote = quotedStatus.account?.acct === this.config.sourceAccountId;
+                    // An "own quote" is quoting a post from the same source account.
+                    // In that case we mirror it as a Bluesky quote embed (resolved via
+                    // the PostMapper), so we must NOT append the quoted URL here. For
+                    // quotes of other accounts we can't build a quote embed, so we
+                    // append the URL which Bluesky will render as a link card.
+                    const isOwnQuote = !!quotedStatus.account?.id &&
+                        quotedStatus.account.id === this.config.sourceAccountId;
+                    quotedStatus.isOwnQuote = isOwnQuote;
+
                     if (!isOwnQuote && quotedStatus.content) {
                         // Append URL - Bluesky will create a link card
                         content += `\n\n${quotedStatus.url}`;
@@ -157,6 +162,7 @@ function processQuotedStatus(quote: MastodonQuote | null): PostContent['quotedSt
             serverRegex: new RegExp(''),
         }),
         account: {
+            id: quoted.account.id,
             username: quoted.account.username,
             acct: quoted.account.acct,
             display_name: quoted.account.display_name,

@@ -14,12 +14,14 @@ export interface QuotedStatus {
     content: string;
     account: QuotedStatusAccount;
     mastodonId?: string;  // The Mastodon post ID for mapping to Bluesky
+    isOwnQuote?: boolean; // True if the quoted post is from the same source account
 }
 
 /**
  * Account info for quoted status
  */
 export interface QuotedStatusAccount {
+    id?: string;      // The Mastodon account ID, used to detect own quotes
     username: string;
     acct: string;
     display_name: string;
