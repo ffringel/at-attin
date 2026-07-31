@@ -1,9 +1,18 @@
 // Post limits
 export const MAX_POST_LENGTH = 300;
 
-// Media size limits (updated to current AT Protocol limits)
-export const MAX_IMAGE_SIZE = 2000000;    // 2MB
-export const MAX_VIDEO_SIZE = 100000000;  // 100MB
+// Media size limits — verified July 2026 against the app.bsky.embed lexicons:
+//  - images: 2MB (app.bsky.embed.images, raised from 1MB in April 2026 via
+//    atproto PR #4823). CLAUDE.md's "~1MB" figure is stale.
+//  - videos: 100MB (app.bsky.embed.video, raised from 50MB in March 2025 via
+//    atproto PR #3602). The PDS-level per-blob upload cap
+//    (PDS_BLOB_UPLOAD_LIMIT, default 50MB) is a separate, lower bound on the
+//    raw uploadBlob request; bsky.social's hosted PDS may have raised it to
+//    match, but if not, a 50-100MB video would 413 at upload time (handled by
+//    the 413 branch in postService.handlePostError). These client-side checks
+//    pre-validate against the lexicon (app-layer) limits.
+export const MAX_IMAGE_SIZE = 2000000;    // 2MB — app.bsky.embed.images max
+export const MAX_VIDEO_SIZE = 100000000;  // 100MB — app.bsky.embed.video max
 
 // Embed limits
 export const MAX_IMAGES_PER_POST = 4;
