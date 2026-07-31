@@ -30,17 +30,19 @@ export class PostService {
     private readonly embedBuilder: EmbedBuilder;
     private readonly postBuilder: PostBuilder;
     private readonly postMapper: PostMapper;
+    private readonly dryRun: boolean;
     private feed?: AppBskyFeedGetAuthorFeed.Response;
     // Track Mastodon post IDs that have been posted
     private readonly postedIds = new Set<string>();
 
-    constructor(agent: Agent, altCardImage?: string) {
+    constructor(agent: Agent, altCardImage?: string, dryRun = false) {
         this.agent = agent;
         this.postMapper = new PostMapper();
         this.threadManager = new ThreadManager();
         this.mediaUploader = new MediaUploader(agent, altCardImage);
         this.embedBuilder = new EmbedBuilder(this.mediaUploader, this.postMapper, agent);
         this.postBuilder = new PostBuilder(agent);
+        this.dryRun = dryRun;
     }
 
     /**
@@ -247,6 +249,21 @@ export class PostService {
 
         // Build and validate post record
         const record = await this.postBuilder.build(post, embed, replyRef);
+
+        // Dry run: log what would be posted and skip the real write. Thread
+        // reply-refs and mappings are also skipped, since no real URI/CID is
+        // produced — so a dry run never mutates Bluesky state or this
+        // session's mapping tables. Login + feed load still happen (needed
+        // for duplicate detection and embed/blob upload), but nothing is
+        // posted.
+        if (this.dryRun) {
+            console.log('[dry-run] would post:', JSON.stringify({
+                text: record.text,
+                reply: record.reply ?? null,
+                embed: record.embed ?? null,
+            }));
+            return;
+        }
 
         // Post with error handling
         try {

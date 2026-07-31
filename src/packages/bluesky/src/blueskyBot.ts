@@ -23,11 +23,11 @@ export class BlueskyBot {
         options?: Partial<BotOptions>,
         altCardImage?: string
     ) {
-        const { service } = Object.assign({}, BlueskyBot.defaultOptions, options);
+        const { service, dryRun } = Object.assign({}, BlueskyBot.defaultOptions, options);
 
         this.sessionManager = new CredentialSession(new URL(service.toString()));
         this.agent = new Agent(this.sessionManager);
-        this.postService = new PostService(this.agent, altCardImage);
+        this.postService = new PostService(this.agent, altCardImage, dryRun);
     }
 
     /**
