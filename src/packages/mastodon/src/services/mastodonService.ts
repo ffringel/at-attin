@@ -1,7 +1,6 @@
 import type { PostContent } from '@at-attin/types';
-import type { JSON as MastodonJSON } from 'tsl-mastodon-api';
-import { MastodonClient } from './apiClient.js';
-import { handleMastodonError } from '../utils/errorHandling.js';
+import * as Mastodon from 'tsl-mastodon-api';
+import { MastodonAPIError, handleMastodonError } from '../utils/errorHandling.js';
 import { sanitizeContent } from '../utils/contentSanitizer.js';
 import { processImages, processVideo, processCard } from '../utils/mediaProcessor.js';
 import { MAX_POSTS } from '../config/constants.js';
@@ -12,7 +11,7 @@ import { MAX_POSTS } from '../config/constants.js';
  */
 interface MastodonQuote {
     state: 'pending' | 'accepted' | 'rejected' | 'revoked' | 'deleted' | 'unauthorized' | 'blocked_account' | 'blocked_domain' | 'muted_account';
-    quoted_status?: MastodonJSON.Status;
+    quoted_status?: Mastodon.JSON.Status;
 }
 
 /**
@@ -30,14 +29,14 @@ export interface MastodonServiceConfig {
  * Fetch and process Mastodon posts for Bluesky mirroring
  */
 export default class MastodonService {
-    private readonly client: MastodonClient;
+    private readonly api: Mastodon.API;
     private readonly config: MastodonServiceConfig;
 
     constructor(config: MastodonServiceConfig) {
         this.config = config;
-        this.client = new MastodonClient({
-            accessToken: config.accessToken,
-            apiUrl: config.apiUrl,
+        this.api = new Mastodon.API({
+            access_token: config.accessToken,
+            api_url: config.apiUrl,
         });
     }
 
@@ -48,11 +47,7 @@ export default class MastodonService {
      */
     async getPosts(limit: number = MAX_POSTS): Promise<PostContent[]> {
         try {
-            const statuses = await this.client.getStatuses(
-                this.config.sourceAccountId,
-                limit
-            );
-
+            const statuses = await this.fetchStatuses(limit);
             return this.processPosts(statuses);
         } catch (error) {
             handleMastodonError(error, 'Failed to fetch Mastodon posts');
@@ -61,9 +56,32 @@ export default class MastodonService {
     }
 
     /**
+     * Fetch recent statuses for the source account.
+     *
+     * The tsl-mastodon-api client self-paces via its internal nextDelay (reset
+     * from X-RateLimit-* headers after each request), and we make exactly one
+     * request per run, so no manual delay or rate-limit logging is needed here.
+     */
+    private async fetchStatuses(limit: number): Promise<Mastodon.JSON.Status[]> {
+        const response = await this.api.getStatuses(
+            this.config.sourceAccountId,
+            { limit }
+        );
+
+        if (response.failed) {
+            throw new MastodonAPIError(
+                `Mastodon API returned error: ${response.error || 'Unknown error'}`,
+                response.status
+            );
+        }
+
+        return response.json;
+    }
+
+    /**
      * Process array of Mastodon statuses into PostContent
      */
-    private processPosts(statuses: MastodonJSON.Status[]): PostContent[] {
+    private processPosts(statuses: Mastodon.JSON.Status[]): PostContent[] {
         return statuses
             .filter((post) => !post.reblog)
             .map(post => {
