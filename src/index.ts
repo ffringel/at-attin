@@ -12,9 +12,15 @@ const mastodonService = new MastodonService({
     giveaways: giveaways,
 });
 
-// Run the bot
+// Run the bot. Credentials are injected (the library never reads process.env);
+// errors propagate here, the single log + exit point (preserves exit code 1 for
+// GitHub Actions to flag a failed cron).
 BlueskyBot.run(
     () => mastodonService.getPosts(),
+    bskyAccount,
     { dryRun: false },
     altCardImage
-).catch(console.error);
+).catch((err) => {
+    console.error('Bot run failed:', err);
+    process.exit(1);
+});

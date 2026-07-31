@@ -73,29 +73,27 @@ export class BlueskyBot {
     }
 
     /**
-     * Run the bot with the provided post fetcher
+     * Run the bot with the provided post fetcher.
+     *
+     * Credentials are passed in by the caller — the library does not read
+     * `process.env`. Errors propagate to the caller (rethrown); the library
+     * does not log or call `process.exit`. The caller owns logging and the
+     * exit decision (see `src/index.ts`).
      */
     static async run(
         getPosts: () => Promise<PostContent[]>,
+        credentials: { identifier: string; password: string },
         options?: Partial<BotOptions>,
         altCardImage?: string
     ): Promise<void> {
         const bot = new BlueskyBot(options, altCardImage);
 
-        try {
-            await bot.login(
-                process.env.BSKY_HANDLE!,
-                process.env.BSKY_PASSWORD!
-            );
+        await bot.login(credentials.identifier, credentials.password);
 
-            const posts = await getPosts();
+        const posts = await getPosts();
 
-            for (const post of posts) {
-                await bot.postContent(post);
-            }
-        } catch (error) {
-            console.error('Error in bot execution:', (error as Error).message);
-            process.exit(1);
+        for (const post of posts) {
+            await bot.postContent(post);
         }
     }
 }
