@@ -53,6 +53,7 @@ export function processVideo(attachments: MediaAttachment[]): Video | undefined 
 
     return {
         url,
+        alt: media.description || '',
         metadata: {
             width: original.width,
             height: original.height,

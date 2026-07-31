@@ -16,6 +16,11 @@ export const MAX_VIDEO_SIZE = 100000000;  // 100MB — app.bsky.embed.video max
 
 // Embed limits
 export const MAX_IMAGES_PER_POST = 4;
+// Video alt text limit: app.bsky.embed.video's `alt` field is capped at
+// maxGraphemes 1000 (maxLength 10000 bytes). Mastodon media descriptions can
+// exceed this, so the alt is truncated to 1000 graphemes before posting
+// (grapheme-correct, not code-unit — see utils/textUtils.ts).
+export const MAX_VIDEO_ALT_LENGTH = 1000;
 
 // Retry configuration
 export const BASE_RETRY_DELAY = 1000;     // 1s base for exponential backoff

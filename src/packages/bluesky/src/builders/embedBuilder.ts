@@ -5,9 +5,10 @@ import {
     AppBskyEmbedRecord,
 } from '@atproto/api';
 import type { PostContent, Image as PostImage } from '@at-attin/types';
-import { MAX_IMAGES_PER_POST } from '../config/constants.js';
+import { MAX_IMAGES_PER_POST, MAX_VIDEO_ALT_LENGTH } from '../config/constants.js';
 import { MediaUploader } from '../media/mediaUploader.js';
 import { QuoteResolver } from '../services/quoteResolver.js';
+import { truncateToGraphemes } from '../utils/textUtils.js';
 
 /**
  * Union type for all embed types including quote posts
@@ -69,7 +70,7 @@ export class EmbedBuilder {
         return {
             $type: 'app.bsky.embed.video',
             video: videoBlob.blob,
-            alt: video.alt || '',
+            alt: truncateToGraphemes(video.alt || '', MAX_VIDEO_ALT_LENGTH),
             ...(video.metadata?.width && video.metadata?.height && {
                 aspectRatio: {
                     width: video.metadata.width,
