@@ -10,6 +10,5 @@ jobs:
       bskyHandle: "premierleaguebot.bsky.social"
       mastodonHandle: "@premierleague@sportsbots.xyz"
       mastodonAccountId: "110252020252170045"
-      altCardImg: "https://pbs.twimg.com/profile_images/1742837199005954048/YGI6Kw7P_400x400.jpg"
     secrets:
       bskyPassword: ${{ secrets.PREMIER_LEAGUE_BSKY_PASSWORD }}

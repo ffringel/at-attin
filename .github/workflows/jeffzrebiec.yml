@@ -10,6 +10,5 @@ jobs:
       bskyHandle: "jeffzrebiecbot.bsky.social"
       mastodonHandle: "@jeffzrebiec@sportsbots.xyz"
       mastodonAccountId: "109706769384211873"
-      altCardImg: "https://pbs.twimg.com/profile_images/541073151115800576/LhDej9-V_400x400.jpeg"
     secrets:
       bskyPassword: ${{ secrets.JEFF_ZREBIEC_BSKY_PASSWORD }}

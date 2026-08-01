@@ -10,6 +10,5 @@ jobs:
       bskyHandle: "nflbot.bsky.social"
       mastodonHandle: "@nfl@sportsbots.xyz"
       mastodonAccountId: "109616443942149309"
-      altCardImg: "https://pbs.twimg.com/profile_images/1619895559334273028/PHKS_mjX_400x400.jpg"
     secrets:
       bskyPassword: ${{ secrets.NFL_BSKY_PASSWORD }}

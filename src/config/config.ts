@@ -10,7 +10,6 @@ const envSchema = z.object({
     MASTODON_HANDLE: z.string().nonempty(),
     MASTODON_ACCOUNT_ID: z.string().nonempty(),
     MASTODON_ACCESS_TOKEN: z.string().optional().default(""),
-    ALT_CARD_IMG: z.string().nonempty(),
     GIVEAWAYS: z.string().nonempty().default("#AD"),
 });
 
@@ -32,4 +31,3 @@ export const sourceAccountId = parsedSchema.MASTODON_ACCOUNT_ID;
 // Defaults to "" via the zod schema (env var MASTODON_ACCESS_TOKEN).
 export const accessToken = parsedSchema.MASTODON_ACCESS_TOKEN;
 export const giveaways = parsedSchema.GIVEAWAYS.split(",");
-export const altCardImage = parsedSchema.ALT_CARD_IMG;

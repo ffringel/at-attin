@@ -18,9 +18,6 @@ on:
       mastodonAccountId:
         required: true
         type: string
-      altCardImg:
-        required: true
-        type: string
     secrets:
       bskyPassword:
         required: true
@@ -55,4 +52,3 @@ jobs:
           BSKY_PASSWORD: ${{ secrets.bskyPassword }}
           MASTODON_HANDLE: ${{ inputs.mastodonHandle }}
           MASTODON_ACCOUNT_ID: ${{ inputs.mastodonAccountId }}
-          ALT_CARD_IMG: ${{ inputs.altCardImg }}

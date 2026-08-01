@@ -1,6 +1,6 @@
 import MastodonService from '@at-attin/mastodon';
 import { BlueskyBot } from '@at-attin/bluesky';
-import { bskyApi, bskyAccount, altCardImage, giveaways, sourceAccountId, sourceAccount, mastodonApi, accessToken } from './config/config.js';
+import { bskyApi, bskyAccount, giveaways, sourceAccountId, sourceAccount, mastodonApi, accessToken } from './config/config.js';
 
 // Create Mastodon service instance
 const mastodonService = new MastodonService({
@@ -18,8 +18,7 @@ const mastodonService = new MastodonService({
 BlueskyBot.run(
     () => mastodonService.getPosts(),
     bskyAccount,
-    { dryRun: false, service: bskyApi },
-    altCardImage
+    { dryRun: false, service: bskyApi }
 ).catch((err) => {
     console.error('Bot run failed:', err);
     process.exit(1);
