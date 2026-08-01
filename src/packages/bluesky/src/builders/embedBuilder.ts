@@ -81,15 +81,20 @@ export class EmbedBuilder {
     }
 
     /**
-     * Build an images embed (max 4 images)
+     * Build an images embed (max 4 images). Degrades gracefully per-image:
+     * a single image that fails to download/upload (e.g. exceeds Bluesky's
+     * 2MB image limit, bad mime, network error) is skipped rather than
+     * rejecting the whole embed — the post still goes out with the surviving
+     * images, or text-only if every image fails. Mirrors buildExternalEmbed's
+     * "continue without" pattern; prevents one oversized image from killing
+     * the entire run.
      */
-    private async buildImagesEmbed(images: PostImage[]): Promise<AppBskyEmbedImages.Main> {
+    private async buildImagesEmbed(images: PostImage[]): Promise<AppBskyEmbedImages.Main | undefined> {
         const imagesToUpload = images.slice(0, MAX_IMAGES_PER_POST);
 
-        const uploadedImages: AppBskyEmbedImages.Image[] = await Promise.all(
-            imagesToUpload.map(async img => {
-                const media = await this.mediaUploader.upload(img.url, img.alt || '');
-                return {
+        const results = await Promise.allSettled(
+            imagesToUpload.map(img =>
+                this.mediaUploader.upload(img.url, img.alt || '').then(media => ({
                     image: media.blob,
                     alt: img.alt || '',
                     ...(img.aspectRatio?.width && img.aspectRatio?.height && {
@@ -98,9 +103,26 @@ export class EmbedBuilder {
                             height: img.aspectRatio.height,
                         },
                     }),
-                };
-            })
+                }))
+            )
         );
+
+        const uploadedImages: AppBskyEmbedImages.Image[] = [];
+        for (const result of results) {
+            if (result.status === 'fulfilled') {
+                uploadedImages.push(result.value);
+            } else {
+                console.warn(
+                    'Skipping failed image:',
+                    result.reason instanceof Error ? result.reason.message : result.reason
+                );
+            }
+        }
+
+        if (uploadedImages.length === 0) {
+            console.warn('All images failed to upload; posting without an image embed');
+            return undefined;
+        }
 
         return {
             $type: 'app.bsky.embed.images',
