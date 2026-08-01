@@ -19,18 +19,16 @@ export interface MediaUpload {
 
 /**
  * Uploads media to Bluesky's PDS with retry logic, using {@link fetchMedia} for
- * the download step. The fetch and upload steps are split so the fallback path
- * (image failed -> use the configured alt card image) can re-fetch + re-upload
- * without re-entering `upload`, which previously recursed unboundedly when the
- * alt card image itself failed (stack overflow).
+ * the download step. The fetch and upload steps are split so each can fail and
+ * be reported independently. A failed image is skipped by the caller
+ * (EmbedBuilder.buildImagesEmbed uses Promise.allSettled) — there is no
+ * fallback image; the post goes out with surviving images or text-only.
  */
 export class MediaUploader {
     private readonly agent: Agent;
-    private readonly altCardImage?: string;
 
-    constructor(agent: Agent, altCardImage?: string) {
+    constructor(agent: Agent) {
         this.agent = agent;
-        this.altCardImage = altCardImage;
     }
 
     /**
@@ -47,21 +45,10 @@ export class MediaUploader {
             const blob = await this.uploadBlob(buffer, contentType);
             return { blob, alt };
         } catch (error) {
-            // Bounded fallback to the alt card image for images only. This is a
-            // one-shot inline re-fetch + re-upload — it does NOT re-enter
-            // `upload`, so a failing alt card image can't recurse forever.
-            if (!isVideo && this.altCardImage) {
-                console.log('Using fallback image for failed media upload');
-                try {
-                    const { buffer, contentType } = await fetchMedia(this.altCardImage, false);
-                    const blob = await this.uploadBlob(buffer, contentType);
-                    return { blob, alt: alt || 'Fallback image' };
-                } catch {
-                    // alt card image failed too — fall through and throw the
-                    // original error below (bounded: no further retry).
-                }
-            }
-
+            // Wrap into a plain Error (not rethrown as XRPCError) so the
+            // orchestrator's handlePostError — which retries on XRPCError
+            // 429/5xx — doesn't double-retry what uploadBlob already retried
+            // internally.
             if (error instanceof XRPCError) {
                 throw new Error(`Failed to upload media: ${error.status} ${error.error}`);
             }

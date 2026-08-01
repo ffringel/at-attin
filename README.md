@@ -39,7 +39,6 @@ MASTODON_HANDLE=@yourname@domain.xyz            # Account to follow/mirror posts
 MASTODON_ACCOUNT_ID=numeric-id                   # Specific account ID (for multi-username accounts)
 
 # === Content Preferences ===
-ALT_CARD_IMG=https://example.com/card.jpg       # Fallback image for external cards
 GIVEAWAYS="retweet,dumpsterfire"                 # Keywords to avoid on Bluesky, comma-separated
 ```
 

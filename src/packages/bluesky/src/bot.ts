@@ -31,8 +31,7 @@ export class BlueskyBot {
     };
 
     constructor(
-        options?: Partial<BotOptions>,
-        altCardImage?: string
+        options?: Partial<BotOptions>
     ) {
         const { service, dryRun } = Object.assign({}, BlueskyBot.defaultOptions, options);
 
@@ -42,7 +41,7 @@ export class BlueskyBot {
         // Composition root: construct all collaborators and inject into PostService.
         const registry = new PostRegistry();
         const threadManager = new ThreadManager();
-        const mediaUploader = new MediaUploader(this.agent, altCardImage);
+        const mediaUploader = new MediaUploader(this.agent);
         const quoteResolver = new QuoteResolver(this.agent, registry);
         const embedBuilder = new EmbedBuilder(mediaUploader, quoteResolver);
         const postBuilder = new PostBuilder(this.agent);
@@ -83,10 +82,9 @@ export class BlueskyBot {
     static async run(
         getPosts: () => Promise<PostContent[]>,
         credentials: { identifier: string; password: string },
-        options?: Partial<BotOptions>,
-        altCardImage?: string
+        options?: Partial<BotOptions>
     ): Promise<void> {
-        const bot = new BlueskyBot(options, altCardImage);
+        const bot = new BlueskyBot(options);
 
         await bot.login(credentials.identifier, credentials.password);
 
