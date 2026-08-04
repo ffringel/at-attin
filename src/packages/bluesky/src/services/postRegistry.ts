@@ -44,43 +44,87 @@ export class PostRegistry {
     }
 
     /**
-     * Find an existing Bluesky post in the loaded author feed that mirrors
-     * the given Mastodon post. Returns the matching feed entry (with its
-     * Bluesky URI/CID) so the mapping can be re-established for quote posts,
-     * or undefined if no match is found.
-     *
-     * For long posts (mirrored as a multi-post Bluesky thread) every chunk's
-     * prefix is checked. The thread starter ([1/2]) can be missing from the
-     * author feed — a Bluesky indexing quirk when a post and its reply are
-     * created in the same second — while later chunk replies are present, so
-     * matching any chunk detects an already-mirrored thread.
+     * Build the normalized first-50-char prefixes used to match a post against
+     * the author feed. Long posts (mirrored as multi-post Bluesky threads)
+     * contribute every chunk's prefix, since the thread starter ([1/2]) can be
+     * missing from the feed while later chunk replies are present. The
+     * `[x/y]` thread suffix is stripped before prefixing.
      */
-    findDuplicateInFeed(post: PostContent): FeedViewPost | undefined {
-        if (!this.feed?.data?.feed) return undefined;
-
-        // For thread chunks, compare without the [x/y] suffix
+    private static contentPrefixes(content: string): string[] {
         const threadPattern = /\s*\[\d+\/\d+\]$/;
-        const contents = post.content.length > MAX_POST_LENGTH
-            ? splitLongPost(post.content)
-            : [post.content];
-        const prefixes = contents
+        const contents = content.length > MAX_POST_LENGTH
+            ? splitLongPost(content)
+            : [content];
+        return contents
             .map(c => c.replace(threadPattern, '').trim().substring(0, 50))
             .filter(p => p.length > 0);
+    }
 
+    /**
+     * Find the first feed entry whose text shares a normalized 50-char prefix
+     * with any of `prefixes`. Shared by duplicate detection and quote
+     * resolution. Short feed posts (≤20 chars) are skipped to avoid
+     * false positives on near-empty or placeholder text.
+     */
+    private matchFeedByPrefix(prefixes: string[]): FeedViewPost | undefined {
+        if (!this.feed?.data?.feed || prefixes.length === 0) return undefined;
+
+        const threadPattern = /\s*\[\d+\/\d+\]$/;
         return this.feed.data.feed.find((postView: FeedViewPost) => {
             const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
             if (!currentRecord) return false;
 
             const currentText = (currentRecord.text?.trim() || '').replace(threadPattern, '').trim();
-
-            // Only match when we have a Mastodon ID; compare normalized text
-            // prefixes to tolerate thread-chunk suffixes and minor differences.
-            if (post.mastodonId && currentText.length > 20) {
-                return prefixes.some(p => currentText.substring(0, 50) === p);
-            }
-
-            return false;
+            return currentText.length > 20 && prefixes.some(p => currentText.substring(0, 50) === p);
         });
+    }
+
+    /**
+     * Find an existing Bluesky post in the loaded author feed that mirrors
+     * the given Mastodon post. Returns the matching feed entry (with its
+     * Bluesky URI/CID) so the mapping can be re-established for quote posts,
+     * or undefined if no match is found.
+     *
+     * Only matches when the post carries a Mastodon ID (the guard against
+     * content-only false positives) — compare normalized text prefixes to
+     * tolerate thread-chunk suffixes and minor differences.
+     */
+    findDuplicateInFeed(post: PostContent): FeedViewPost | undefined {
+        if (!post.mastodonId) return undefined;
+        return this.matchFeedByPrefix(PostRegistry.contentPrefixes(post.content));
+    }
+
+    /**
+     * Resolve the Bluesky root URI of a previously-mirrored post by matching
+     * its sanitized content against the author feed — the feed fallback used
+     * by QuoteResolver when the quotee's Mastodon ID isn't in the in-memory
+     * id→uri map.
+     *
+     * That map starts empty each run and is only populated for posts processed
+     * in THIS run (posted fresh, or detected as a duplicate via
+     * `findDuplicateInFeed`). A quote of a post mirrored in a *previous* run,
+     * now older than the Mastodon fetch window (MAX_POSTS statuses), is never
+     * processed this run, so its ID is never mapped — yet its Bluesky mirror
+     * is still in the author feed (up to 100 posts). Matching the quotee's
+     * content against the feed re-establishes the link so the quote embeds the
+     * Bluesky post instead of degrading to a plain Twitter/x.com URL.
+     *
+     * Returns the thread *root* URI when the match is a thread reply chunk, so
+     * quotes reference the root post (consistent with `storeDuplicateMappings`).
+     *
+     * Caveat: content-prefix matching is fuzzy. For own-quotes of the source
+     * account's own cross-posts, the quotee's Bluesky text (`sanitize`, with
+     * the source handle rewritten to the Bluesky handle) and the quoted
+     * status text we match against (`sanitizeQuoted`, no handle rewrite) are
+     * identical for tweet text that doesn't mention the source handle — the
+     * common case. If the first 50 chars contain the handle, the prefixes
+     * diverge and the match misses, falling through to the URL fallback.
+     */
+    findRootUriByContent(content: string): string | undefined {
+        const match = this.matchFeedByPrefix(PostRegistry.contentPrefixes(content));
+        if (!match) return undefined;
+        const record = match.post.record as AppBskyFeedPost.Record | undefined;
+        return record?.reply?.root?.uri ?? match.post.uri;
     }
 
     /**
