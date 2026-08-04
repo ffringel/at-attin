@@ -62,22 +62,37 @@ export class EmbedBuilder {
     }
 
     /**
-     * Build a video embed
+     * Build a video embed. Degrades gracefully: a video that fails to
+     * download/upload (e.g. exceeds Bluesky's video size limit, bad mime,
+     * network error) is skipped rather than rejecting the whole embed build —
+     * the post goes out text-only instead of aborting the run. Mirrors
+     * buildImagesEmbed's per-image "continue without" pattern; prevents one
+     * oversized video from killing the entire 5-minute cron batch.
      */
-    private async buildVideoEmbed(video: NonNullable<PostContent['video']>): Promise<AppBskyEmbedVideo.Main> {
-        const videoBlob = await this.mediaUploader.upload(video.url, '', true);
+    private async buildVideoEmbed(
+        video: NonNullable<PostContent['video']>
+    ): Promise<AppBskyEmbedVideo.Main | undefined> {
+        try {
+            const videoBlob = await this.mediaUploader.upload(video.url, '', true);
 
-        return {
-            $type: 'app.bsky.embed.video',
-            video: videoBlob.blob,
-            alt: truncateToGraphemes(video.alt || '', MAX_VIDEO_ALT_LENGTH),
-            ...(video.metadata?.width && video.metadata?.height && {
-                aspectRatio: {
-                    width: video.metadata.width,
-                    height: video.metadata.height,
-                },
-            }),
-        };
+            return {
+                $type: 'app.bsky.embed.video',
+                video: videoBlob.blob,
+                alt: truncateToGraphemes(video.alt || '', MAX_VIDEO_ALT_LENGTH),
+                ...(video.metadata?.width && video.metadata?.height && {
+                    aspectRatio: {
+                        width: video.metadata.width,
+                        height: video.metadata.height,
+                    },
+                }),
+            };
+        } catch (error) {
+            console.warn(
+                'Skipping failed video:',
+                error instanceof Error ? error.message : error
+            );
+            return undefined;
+        }
     }
 
     /**
