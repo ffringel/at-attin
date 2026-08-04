@@ -45,8 +45,14 @@ export class QuoteResolver {
 
     /**
      * Get Bluesky AT URI for a quoted Mastodon status.
-     * Priority: 1) an `at://` URI on the status itself (Bluesky-to-Bluesky
-     * quotes), 2) a registry lookup by Mastodon ID (or ID extracted from URL).
+     * Priority:
+     *   1) an `at://` URI on the status itself (Bluesky-to-Bluesky quotes),
+     *   2) a registry lookup by Mastodon ID (or ID extracted from URL) — the
+     *      quotee was processed earlier this run,
+     *   3) a content-prefix search of the author feed — the quotee was
+     *      mirrored in a *previous* run and isn't in the current Mastodon
+     *      fetch, so its ID was never mapped this run. See
+     *      PostRegistry.findRootUriByContent for why this fallback exists.
      */
     private getBlueskyUri(quotedStatus: NonNullable<PostContent['quotedStatus']>): string | undefined {
         // First check if the URI is already an AT URI (for Bluesky-to-Bluesky quotes)
@@ -60,7 +66,20 @@ export class QuoteResolver {
                          quotedStatus.url?.match(/\/(\d+)$/)?.[1];
 
         if (quotedId) {
-            return this.registry.getUri(quotedId);
+            const mapped = this.registry.getUri(quotedId);
+            if (mapped) {
+                return mapped;
+            }
+        }
+
+        // Feed fallback: the quotee was mirrored in a prior run and isn't in
+        // this run's Mastodon fetch, so its ID is absent from the in-memory
+        // map. Match the quotee's sanitized content against the author feed
+        // to recover its Bluesky URI. Without this, an own-quote of an older
+        // post degrades to a plain Twitter/x.com link (the postContent
+        // fallback) instead of a real Bluesky quote embed.
+        if (quotedStatus.content) {
+            return this.registry.findRootUriByContent(quotedStatus.content);
         }
         return undefined;
     }
