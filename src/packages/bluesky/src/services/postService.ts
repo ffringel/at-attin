@@ -144,13 +144,22 @@ export class PostService {
         const embed = await this.embedBuilder.build(post);
         let content = post.content;
 
-        // Fallback for own quotes: if we couldn't build a Bluesky quote embed
-        // (e.g. the quoted post was mirrored in a previous run and we have no
-        // URI mapping for it in this session), append the quoted URL so the
-        // quote reference isn't silently dropped. Only when there's room to
-        // stay within the character limit. Rewrite twitter.com -> x.com since
-        // this URL is appended after sanitization.
-        if (!embed && post.quotedStatus?.isOwnQuote && post.quotedStatus.url) {
+        // Preserve the quote reference as an in-text x.com URL when no quote
+        // embed/card could carry it:
+        //   - an own-quote whose record embed didn't resolve (the quotee was
+        //     mirrored in a prior run and has aged out of the 100-post author
+        //     feed — no uri/cid to embed), or
+        //   - a quote post whose embed was preempted by quoter media (Bluesky
+        //     can't attach a card/record alongside images/video, so the quote
+        //     card/record was dropped in favor of the media embed).
+        // When a record embed (own-quote) or an x.com link card (cross-account)
+        // DID build, the embed carries the reference and no URL is appended —
+        // appending would duplicate it as plain text. Rewrite twitter.com → x.com
+        // (the URL is appended after sanitization). Only when there's room.
+        const embedCarriesQuote =
+            embed?.$type === 'app.bsky.embed.record' ||
+            embed?.$type === 'app.bsky.embed.external';
+        if (!embedCarriesQuote && post.quotedStatus?.url) {
             const extra = `\n\n${post.quotedStatus.url.replace(/twitter\.com/, 'x.com')}`;
             if (content.length + extra.length <= MAX_POST_LENGTH) {
                 content += extra;
@@ -232,10 +241,15 @@ export class PostService {
                 // If the match is a thread reply (e.g. we matched the [2/2]
                 // chunk because the [1/2] starter is missing from the feed),
                 // map the Mastodon ID to the thread root so quote posts
-                // reference the root post rather than the last chunk.
+                // reference the root post rather than the last chunk. Carry
+                // the CID too (from the reply root ref or the feed post) so
+                // quote resolution skips the racy getPosts CID fetch.
                 const record = existing.post.record as AppBskyFeedPost.Record | undefined;
-                const rootUri = record?.reply?.root?.uri ?? existing.post.uri;
-                this.registry.storeDuplicateMappings(post, rootUri);
+                const root = record?.reply?.root;
+                const mapped = (root?.uri && root.cid)
+                    ? { uri: root.uri, cid: root.cid }
+                    : { uri: existing.post.uri, cid: existing.post.cid };
+                this.registry.storeDuplicateMappings(post, mapped);
             }
 
             return;

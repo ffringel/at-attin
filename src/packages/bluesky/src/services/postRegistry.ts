@@ -5,14 +5,27 @@ import { splitLongPost } from '../utils/postSplitter.js';
 import { MAX_POST_LENGTH } from '../config/constants.js';
 
 /**
+ * A Mastodon (or cross-post) ID → Bluesky record mapping. Carries both the
+ * AT URI and the CID so quote embeds can be built without a `getPosts`
+ * round-trip: the CID is captured at post time (`agent.post()` returns it) or
+ * from the author feed (`post.cid`), and `getPosts` on a just-created post
+ * races the AppView index (returns empty) — which was degrading same-run
+ * own-quotes to plain links.
+ */
+export interface MappedRecord {
+    uri: string;
+    cid: string;
+}
+
+/**
  * Owns the Mastodon↔Bluesky mapping and duplicate-detection state for a run:
- * the id→uri map (replaces the former PostMapper), the set of already-posted
- * Mastodon IDs, and the cached author feed. Answers "has this been mirrored,
- * and to which Bluesky URI?" Extracted from PostService so the orchestrator
- * stays free of dedup/mapping state.
+ * the id→record map (replaces the former PostMapper), the set of already-
+ * posted Mastodon IDs, and the cached author feed. Answers "has this been
+ * mirrored, and to which Bluesky record?" Extracted from PostService so the
+ * orchestrator stays free of dedup/mapping state.
  */
 export class PostRegistry {
-    private readonly idToUri = new Map<string, string>();
+    private readonly idToRecord = new Map<string, MappedRecord>();
     private readonly postedIds = new Set<string>();
     private feed?: AppBskyFeedGetAuthorFeed.Response;
 
@@ -22,11 +35,12 @@ export class PostRegistry {
     }
 
     /**
-     * Look up the Bluesky AT URI previously mapped to a Mastodon (or
-     * cross-post) ID. Used by EmbedBuilder to resolve quote embeds.
+     * Look up the Bluesky record previously mapped to a Mastodon (or
+     * cross-post) ID — both URI and CID, so quote embeds skip the racy
+     * `getPosts` CID fetch. Used by QuoteResolver.
      */
-    getUri(id: string): string | undefined {
-        return this.idToUri.get(id);
+    getRecord(id: string): MappedRecord | undefined {
+        return this.idToRecord.get(id);
     }
 
     /**
@@ -95,10 +109,10 @@ export class PostRegistry {
     }
 
     /**
-     * Resolve the Bluesky root URI of a previously-mirrored post by matching
+     * Resolve the Bluesky root record of a previously-mirrored post by matching
      * its sanitized content against the author feed — the feed fallback used
      * by QuoteResolver when the quotee's Mastodon ID isn't in the in-memory
-     * id→uri map.
+     * id→record map.
      *
      * That map starts empty each run and is only populated for posts processed
      * in THIS run (posted fresh, or detected as a duplicate via
@@ -109,8 +123,10 @@ export class PostRegistry {
      * content against the feed re-establishes the link so the quote embeds the
      * Bluesky post instead of degrading to a plain Twitter/x.com URL.
      *
-     * Returns the thread *root* URI when the match is a thread reply chunk, so
-     * quotes reference the root post (consistent with `storeDuplicateMappings`).
+     * Returns the thread *root* record (URI + CID) when the match is a thread
+     * reply chunk, so quotes reference the root post (consistent with
+     * `storeDuplicateMappings`). The CID comes from the feed post (or the
+     * reply root ref), so this path also skips the racy `getPosts` CID fetch.
      *
      * Caveat: content-prefix matching is fuzzy. For own-quotes of the source
      * account's own cross-posts, the quotee's Bluesky text (`sanitize`, with
@@ -120,56 +136,68 @@ export class PostRegistry {
      * common case. If the first 50 chars contain the handle, the prefixes
      * diverge and the match misses, falling through to the URL fallback.
      */
-    findRootUriByContent(content: string): string | undefined {
+    findRootUriByContent(content: string): MappedRecord | undefined {
         const match = this.matchFeedByPrefix(PostRegistry.contentPrefixes(content));
         if (!match) return undefined;
         const record = match.post.record as AppBskyFeedPost.Record | undefined;
-        return record?.reply?.root?.uri ?? match.post.uri;
+        const root = record?.reply?.root;
+        if (root?.uri && root.cid) {
+            return { uri: root.uri, cid: root.cid };
+        }
+        // Matched a non-reply feed post (or a reply missing its root ref):
+        // use the feed post's own URI/CID. post.cid is always present on a
+        // FeedViewPost.
+        return { uri: match.post.uri, cid: match.post.cid };
     }
 
     /**
      * Store mappings for duplicate detection (and, for cross-posted IDs,
      * quote resolution). Maps this post's own Mastodon ID and cross-post ID
-     * to the Bluesky URI just created.
+     * to the Bluesky record just created — URI **and** CID, so a same-run
+     * quote of this post can build its embed without a `getPosts` round-trip
+     * that would race the AppView index.
      *
      * Note: the quoted status's ID is intentionally NOT mapped here. Its
-     * Bluesky URI is the quotee's, not this (the quoter's) post's URI, and
+     * Bluesky record is the quotee's, not this (the quoter's) post's, and
      * the quotee's correct mapping is established separately — by
      * `storeDuplicateMappings` when the quotee was already mirrored, or by
      * this same method's own-ID path when the quotee itself is posted.
-     * Mapping quotedId → response.uri here would point quote resolution at
-     * the quoter and overwrite a correct quotee mapping.
+     * Mapping quotedId → response here would point quote resolution at the
+     * quoter and overwrite a correct quotee mapping.
      */
     storeMappings(post: PostContent, response: { uri: string; cid: string }): void {
+        const record: MappedRecord = { uri: response.uri, cid: response.cid };
         // Track Mastodon post ID to prevent duplicates
         if (post.mastodonId) {
             this.postedIds.add(post.mastodonId);
-            this.idToUri.set(post.mastodonId, response.uri);
+            this.idToRecord.set(post.mastodonId, record);
         }
 
         // Store mapping for cross-post ID
         if (post.crossPostId) {
-            this.idToUri.set(post.crossPostId, response.uri);
+            this.idToRecord.set(post.crossPostId, record);
         }
     }
 
     /**
-     * Re-establish URI mappings for a post that was already mirrored in a
+     * Re-establish record mappings for a post that was already mirrored in a
      * previous run (detected as a duplicate in the author feed). This lets
      * later quote posts that reference it resolve to a real Bluesky quote
-     * embed, since the in-memory map starts empty each run.
+     * embed, since the in-memory map starts empty each run. The CID comes
+     * from the matching feed post (or its thread root), so this path also
+     * avoids the `getPosts` CID fetch.
      *
      * Unlike storeMappings, this only maps the post's own IDs (Mastodon ID
      * and cross-post ID) - not any quotedStatus - because the quoted status
      * belongs to a different post.
      */
-    storeDuplicateMappings(post: PostContent, uri: string): void {
+    storeDuplicateMappings(post: PostContent, record: MappedRecord): void {
         if (post.mastodonId) {
             this.postedIds.add(post.mastodonId);
-            this.idToUri.set(post.mastodonId, uri);
+            this.idToRecord.set(post.mastodonId, record);
         }
         if (post.crossPostId) {
-            this.idToUri.set(post.crossPostId, uri);
+            this.idToRecord.set(post.crossPostId, record);
         }
     }
 }
