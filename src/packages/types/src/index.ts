@@ -11,12 +11,19 @@ export interface BotOptions {
  * values to ''. Downstream consumers treat both '' and undefined as "no value"
  * (via `?.` chains and truthy guards), so this is a precision change with no
  * behavior difference.
+ *
+ * `content`/`account` are optional: present for an *accepted* quote
+ * (quote.state === 'accepted', quoted_status populated), absent for a
+ * *pending* cross-account quote (quoted_status null — the bridge hasn't
+ * resolved it yet). For pending quotes the producer synthesizes a minimal
+ * QuotedStatus carrying only the x.com URL, so EmbedBuilder can render an
+ * x.com link card instead of leaking the quote-inline cruft or a bare URL.
  */
 export interface QuotedStatus {
     uri?: string;
     url?: string;
-    content: string;
-    account: QuotedStatusAccount;
+    content?: string;
+    account?: QuotedStatusAccount;
     mastodonId?: string;  // The Mastodon post ID for mapping to Bluesky
     isOwnQuote?: boolean; // True if the quoted post is from the same source account
 }

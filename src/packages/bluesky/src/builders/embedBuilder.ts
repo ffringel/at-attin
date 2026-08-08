@@ -5,7 +5,7 @@ import {
     AppBskyEmbedRecord,
 } from '@atproto/api';
 import type { PostContent, Image as PostImage } from '@at-attin/types';
-import { MAX_IMAGES_PER_POST, MAX_VIDEO_ALT_LENGTH } from '../config/constants.js';
+import { MAX_IMAGES_PER_POST, MAX_VIDEO_ALT_LENGTH, MAX_EXTERNAL_TITLE_LENGTH, MAX_EXTERNAL_DESC_LENGTH } from '../config/constants.js';
 import { MediaUploader } from '../media/mediaUploader.js';
 import { QuoteResolver } from '../services/quoteResolver.js';
 import { truncateToGraphemes } from '../utils/textUtils.js';
@@ -21,7 +21,14 @@ export type Embed =
 
 /**
  * Builds embed structures for Bluesky posts based on content type.
- * Priority: Video > Images > Own-Quote > External Card > (non-own) Quote Post
+ * Priority: Video > Images > Own-Quote (record embed) > Cross-account Quote
+ * (x.com link card) > Mastodon link card > Bluesky-to-Bluesky quote (record).
+ *
+ * Media still wins outright: Bluesky can't attach a card or record embed
+ * alongside images/video in a single post, so a quote post carrying quoter
+ * media posts the media and preserves the quote reference as an in-text
+ * x.com URL (the postService fallback) — there's no single-embed way to do
+ * both.
  */
 export class EmbedBuilder {
     private readonly mediaUploader: MediaUploader;
@@ -48,33 +55,86 @@ export class EmbedBuilder {
             return this.buildImagesEmbed(post.images);
         }
 
-        // Priority 3: Own-quote embed (record embed). Own-quotes carry no
-        // appended URL (the embed is the reference), so they must beat a
-        // content link-card (priority 4) — otherwise an own-quote whose
-        // quoter text also has a Mastodon link-card would build the card and
-        // drop the quote entirely. If the quote embed can't resolve, fall
-        // through so the card / URL fallback still applies.
-        if (post.quotedStatus?.isOwnQuote) {
-            const quoteEmbed = await this.buildQuoteEmbed(post.quotedStatus);
-            if (quoteEmbed) {
-                return quoteEmbed;
+        // Quotes (own and cross-account) only attach when there's no quoter
+        // media — see the class doc.
+        if (post.quotedStatus) {
+            // Own-quote: embed the already-mirrored Bluesky post as a record
+            // embed. Resolved via PostRegistry (cid carried from post time /
+            // feed, so no racy getPosts round-trip). If it can't resolve
+            // (quotee outside the feed window), fall through so the x.com URL
+            // fallback (postService) preserves the reference.
+            if (post.quotedStatus.isOwnQuote) {
+                const quoteEmbed = await this.buildQuoteEmbed(post.quotedStatus);
+                if (quoteEmbed) {
+                    return quoteEmbed;
+                }
+            } else if (post.quotedStatus.uri?.startsWith('at://')) {
+                // Bluesky-to-Bluesky quote of another account: a real record
+                // embed (the quotee is a Bluesky post). CID fetched via getPosts.
+                const quoteEmbed = await this.buildQuoteEmbed(post.quotedStatus);
+                if (quoteEmbed) {
+                    return quoteEmbed;
+                }
+            } else {
+                // Cross-account Mastodon quote: the quotee is a tweet on
+                // another account, which we can't reference as a Bluesky record.
+                // Render it as an x.com link card (app.bsky.embed.external)
+                // built from the quoted_status metadata — Bluesky never
+                // auto-generates a card from a bare URL in the text, so the
+                // card must be built explicitly. Returns undefined when no
+                // usable URL is present (rare), falling through to the link
+                // card / URL fallback below.
+                const crossCard = this.buildCrossQuoteCard(post.quotedStatus);
+                if (crossCard) {
+                    return crossCard;
+                }
             }
         }
 
-        // Priority 4: External card embed
+        // Priority N: External card embed (Mastodon link preview on the
+        // quoter's own post). Lower than quotes — a quote's reference is the
+        // more salient embed — but reached when no quote embed applied.
         if (post.card?.uri && post.card.title && post.card.description) {
             return this.buildExternalEmbed(post.card);
         }
 
-        // Priority 5: Non-own quote post embed (record embed). For quotes of
-        // other accounts this typically doesn't resolve (the quotee isn't in
-        // this account's map/feed), so the appended x.com URL (added by the
-        // mastodon producer) renders the tweet as a link card instead.
-        if (post.quotedStatus) {
-            return this.buildQuoteEmbed(post.quotedStatus);
-        }
-
         return undefined;
+    }
+
+    /**
+     * Build an x.com link card for a cross-account quote — the Bluesky
+     * representation of "embed the x.com/twitter post." Bluesky does NOT
+     * auto-generate a card from a URL in post text (detectFacets only makes a
+     * clickable link facet), so the card must be constructed explicitly from
+     * the quoted_status metadata the Mastodon bridge already provided:
+     *   - uri:  the tweet's x.com URL (quotedStatus.url, twitter.com→x.com;
+     *           for pending quotes, the synthesized x.com/i/status/<id> URL),
+     *   - title: the quoted author's display name, or a fallback for pending
+     *           quotes (no account metadata),
+     *   - description: the quoted tweet's sanitized text, truncated to the
+     *           external embed's 1018-grapheme cap (empty for pending).
+     * No thumbnail: the bridge doesn't surface the quoted tweet's media on
+     * QuotedStatus, and fetching x.com OG tags is authwalled — a text-only
+     * card is the reliable representation.
+     */
+    private buildCrossQuoteCard(
+        quotedStatus: NonNullable<PostContent['quotedStatus']>
+    ): AppBskyEmbedExternal.Main | undefined {
+        const rawUrl = quotedStatus.url ?? quotedStatus.uri;
+        if (!rawUrl) {
+            return undefined;
+        }
+        const uri = rawUrl.replace(/twitter\.com/, 'x.com');
+        const title = quotedStatus.account?.display_name
+            ? truncateToGraphemes(quotedStatus.account.display_name, MAX_EXTERNAL_TITLE_LENGTH)
+            : 'Quoted post on X';
+        const description = quotedStatus.content
+            ? truncateToGraphemes(quotedStatus.content, MAX_EXTERNAL_DESC_LENGTH)
+            : '';
+        return {
+            $type: 'app.bsky.embed.external',
+            external: { uri, title, description },
+        };
     }
 
     /**

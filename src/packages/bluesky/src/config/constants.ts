@@ -16,6 +16,13 @@ export const MAX_VIDEO_SIZE = 100000000;  // 100MB — app.bsky.embed.video max
 
 // Embed limits
 export const MAX_IMAGES_PER_POST = 4;
+// app.bsky.embed.external card text limits. The bundled lexicon declares
+// title/description as plain strings (no client-side maxGraphemes), but the
+// PDS/AppView enforces these grapheme caps server-side — exceeding them
+// rejects the record. Used for the synthesized x.com link cards built for
+// cross-account quote posts.
+export const MAX_EXTERNAL_TITLE_LENGTH = 300;    // external.title maxGraphemes
+export const MAX_EXTERNAL_DESC_LENGTH = 1018;    // external.description maxGraphemes
 // Video alt text limit: app.bsky.embed.video's `alt` field is capped at
 // maxGraphemes 1000 (maxLength 10000 bytes). Mastodon media descriptions can
 // exceed this, so the alt is truncated to 1000 graphemes before posting
