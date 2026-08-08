@@ -232,10 +232,15 @@ export class PostService {
                 // If the match is a thread reply (e.g. we matched the [2/2]
                 // chunk because the [1/2] starter is missing from the feed),
                 // map the Mastodon ID to the thread root so quote posts
-                // reference the root post rather than the last chunk.
+                // reference the root post rather than the last chunk. Carry
+                // the CID too (from the reply root ref or the feed post) so
+                // quote resolution skips the racy getPosts CID fetch.
                 const record = existing.post.record as AppBskyFeedPost.Record | undefined;
-                const rootUri = record?.reply?.root?.uri ?? existing.post.uri;
-                this.registry.storeDuplicateMappings(post, rootUri);
+                const root = record?.reply?.root;
+                const mapped = (root?.uri && root.cid)
+                    ? { uri: root.uri, cid: root.cid }
+                    : { uri: existing.post.uri, cid: existing.post.cid };
+                this.registry.storeDuplicateMappings(post, mapped);
             }
 
             return;

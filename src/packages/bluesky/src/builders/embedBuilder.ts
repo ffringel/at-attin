@@ -21,7 +21,7 @@ export type Embed =
 
 /**
  * Builds embed structures for Bluesky posts based on content type.
- * Priority: Video > Images > External Card > Quote Post
+ * Priority: Video > Images > Own-Quote > External Card > (non-own) Quote Post
  */
 export class EmbedBuilder {
     private readonly mediaUploader: MediaUploader;
@@ -48,12 +48,28 @@ export class EmbedBuilder {
             return this.buildImagesEmbed(post.images);
         }
 
-        // Priority 3: External card embed
+        // Priority 3: Own-quote embed (record embed). Own-quotes carry no
+        // appended URL (the embed is the reference), so they must beat a
+        // content link-card (priority 4) — otherwise an own-quote whose
+        // quoter text also has a Mastodon link-card would build the card and
+        // drop the quote entirely. If the quote embed can't resolve, fall
+        // through so the card / URL fallback still applies.
+        if (post.quotedStatus?.isOwnQuote) {
+            const quoteEmbed = await this.buildQuoteEmbed(post.quotedStatus);
+            if (quoteEmbed) {
+                return quoteEmbed;
+            }
+        }
+
+        // Priority 4: External card embed
         if (post.card?.uri && post.card.title && post.card.description) {
             return this.buildExternalEmbed(post.card);
         }
 
-        // Priority 4: Quote post embed (record embed)
+        // Priority 5: Non-own quote post embed (record embed). For quotes of
+        // other accounts this typically doesn't resolve (the quotee isn't in
+        // this account's map/feed), so the appended x.com URL (added by the
+        // mastodon producer) renders the tweet as a link card instead.
         if (post.quotedStatus) {
             return this.buildQuoteEmbed(post.quotedStatus);
         }

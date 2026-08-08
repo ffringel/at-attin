@@ -132,23 +132,44 @@ export default class MastodonService {
 
                 let content = post.content;
 
-                // If this is a quote post, handle the content
-                if (quotedStatus) {
-                    // Strip the quote reference HTML
-                    content = content.replace(/<p class="quote-inline">.*?<\/p>/g, '').trim();
+                // The bridge prepends a <p class="quote-inline">RE: <url></p> to
+                // the content of any quote post — accepted (with a quoted_status)
+                // or pending (quoted_status null). Always strip it so the quote
+                // reference doesn't leak into the posted text; the reference is
+                // carried by the Bluesky quote embed (own-quotes) or an appended
+                // x.com URL (cross-account). Capture the inline first so a pending
+                // quote can still derive the quoted tweet's x.com URL from it.
+                const quoteInlineMatch = post.content.match(/<p class="quote-inline">[\s\S]*?<\/p>/);
+                content = content.replace(/<p class="quote-inline">[\s\S]*?<\/p>/g, '').trim();
 
+                // If this is an accepted quote post, handle the content
+                if (quotedStatus) {
                     // An "own quote" is quoting a post from the same source account.
                     // In that case we mirror it as a Bluesky quote embed (resolved via
-                    // the PostMapper), so we must NOT append the quoted URL here. For
+                    // the PostRegistry), so we must NOT append the quoted URL here. For
                     // quotes of other accounts we can't build a quote embed, so we
                     // append the URL which Bluesky will render as a link card.
                     const isOwnQuote = !!quotedStatus.account?.id &&
                         quotedStatus.account.id === this.config.sourceAccountId;
                     quotedStatus.isOwnQuote = isOwnQuote;
 
-                    if (!isOwnQuote && quotedStatus.content) {
+                    if (!isOwnQuote && quotedStatus.url) {
                         // Append URL - Bluesky will create a link card
                         content += `\n\n${quotedStatus.url}`;
+                    }
+                } else if (quoteInlineMatch) {
+                    // Pending/external quote: the bridge hasn't supplied
+                    // quoted_status, so there's nothing to build a Bluesky quote
+                    // embed from. Derive the quoted tweet's id from the inline
+                    // sportsbots/ext.sportsbots URL and append an x.com permalink
+                    // so Bluesky renders the quoted tweet as a link card instead of
+                    // the "RE: <sportsbots url>" cruft. The i/status/<id> form
+                    // avoids needing the username, which the bridge doesn't surface
+                    // for pending quotes.
+                    const href = quoteInlineMatch[0].match(/href="([^"]+)"/)?.[1];
+                    const tweetId = href?.match(/\/statuses\/(\d+)/)?.[1];
+                    if (tweetId) {
+                        content += `\n\nhttps://x.com/i/status/${tweetId}`;
                     }
                 }
 
