@@ -22,14 +22,14 @@ export function isGIFV(media: MediaAttachment): media is GIFVAttachment {
  * Type guard for VideoAttachment
  */
 export function isVideo(media: MediaAttachment): media is VideoAttachment {
-    return media.type === 'video';
+    return media.type === 'video' || media.type === 'gifv';
 }
 
 /**
- * Check if media is an image or GIFV (processable as image)
+ * Check if media is an image (processable as image; gifv is handled as video)
  */
 export function isProcessableAsImage(
     media: MediaAttachment
 ): media is ImageAttachment | GIFVAttachment {
-    return isImage(media) || isGIFV(media);
+    return isImage(media);
 }
