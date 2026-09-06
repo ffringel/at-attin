@@ -60,17 +60,15 @@ export class PostRegistry {
     /**
      * Build the normalized first-50-char prefixes used to match a post against
      * the author feed. Long posts (mirrored as multi-post Bluesky threads)
-     * contribute every chunk's prefix, since the thread starter ([1/2]) can be
-     * missing from the feed while later chunk replies are present. The
-     * `[x/y]` thread suffix is stripped before prefixing.
+     * contribute every chunk's prefix, since the thread starter can be
+     * missing from the feed while later chunk replies are present.
      */
     private static contentPrefixes(content: string): string[] {
-        const threadPattern = /\s*\[\d+\/\d+\]$/;
         const contents = content.length > MAX_POST_LENGTH
             ? splitLongPost(content)
             : [content];
         return contents
-            .map(c => c.replace(threadPattern, '').trim().substring(0, 50))
+            .map(c => c.trim().substring(0, 50))
             .filter(p => p.length > 0);
     }
 
@@ -83,12 +81,11 @@ export class PostRegistry {
     private matchFeedByPrefix(prefixes: string[]): FeedViewPost | undefined {
         if (!this.feed?.data?.feed || prefixes.length === 0) return undefined;
 
-        const threadPattern = /\s*\[\d+\/\d+\]$/;
         return this.feed.data.feed.find((postView: FeedViewPost) => {
             const currentRecord = postView.post.record as AppBskyFeedPost.Record | undefined;
             if (!currentRecord) return false;
 
-            const currentText = (currentRecord.text?.trim() || '').replace(threadPattern, '').trim();
+            const currentText = (currentRecord.text?.trim() || '').trim();
             return currentText.length > 20 && prefixes.some(p => currentText.substring(0, 50) === p);
         });
     }
