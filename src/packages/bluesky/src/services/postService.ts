@@ -238,8 +238,8 @@ export class PostService {
             // would fall back to a plain link instead of a true quote embed.
             const existing = this.registry.findDuplicateInFeed(post);
             if (existing) {
-                // If the match is a thread reply (e.g. we matched the [2/2]
-                // chunk because the [1/2] starter is missing from the feed),
+                // If the match is a thread reply (e.g. we matched a later
+                // chunk because the first chunk is missing from the feed),
                 // map the Mastodon ID to the thread root so quote posts
                 // reference the root post rather than the last chunk. Carry
                 // the CID too (from the reply root ref or the feed post) so
